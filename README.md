@@ -1,11 +1,11 @@
-# Upright Deployment (up.ckley.net)
+# Upright Deployment (up.example.com)
 
 Production deployment notes for the Upright multi-site rollout on Ubuntu 22.04 with Kamal.
 
 ## Topology
 
-- `app.up.ckley.net`: admin/dashboard web node
-- `ord.up.ckley.net`, `iad.up.ckley.net`, `sea.up.ckley.net`: probe sites
+- `app.up.example.com`: admin/dashboard web node
+- `ord.up.example.com`, `iad.up.example.com`, `sea.up.example.com`: probe sites
 - `jobs` role runs probe scheduling/execution on probe nodes
 - `playwright` accessory is required for Playwright probes
 
@@ -19,7 +19,7 @@ Production deployment notes for the Upright multi-site rollout on Ubuntu 22.04 w
 
 `config/deploy.yml` should include:
 
-- `UPRIGHT_HOSTNAME: up.ckley.net`
+- `UPRIGHT_HOSTNAME: up.example.com`
 - per-tag `SITE_SUBDOMAIN` values (`app`, `ord`, `iad`, `sea`)
 - `PLAYWRIGHT_SERVER_URL: ws://upright-playwright:53333/playwright`
 
@@ -47,3 +47,9 @@ bin/kamal deploy
 ```
 
 If setup/deploy fails, start with `docs/TROUBLESHOOTING.md`.
+
+## Setup Wizard Implementations
+
+- Bash (current default): `bin/upright-linode-setup`
+- Python (side-by-side trial): `bin/upright-linode-setup.py`
+- Python remote deploy mode: `bin/upright-linode-setup.py --deploy-mode remote-pass --run-deploy`

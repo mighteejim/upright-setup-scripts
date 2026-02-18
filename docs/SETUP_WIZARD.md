@@ -9,7 +9,7 @@ The wizard is intended to run locally from the repo root and automates:
 1. Linode bootstrap StackScript sync (`scripts/stackscript/upright-bootstrap.sh`)
 2. Provisioning `app`, `ord`, `iad`, `sea` Linodes
 3. DNS setup (`linode-dns`, `cloudflare-dns`, or `manual`) + propagation checks
-4. Config generation:
+4. Config generation (in local app repo path):
    - `config/deploy.yml`
    - `config/sites.yml`
    - `.kamal/secrets`
@@ -21,18 +21,22 @@ The wizard is intended to run locally from the repo root and automates:
 Run from repo root:
 
 ```bash
-cd ~/app.up.ckley.net
+cd ~/Developer/oss/upright-setup-scripts
 ```
 
 The script checks for:
 
 - `linode-cli` (auto-install attempted if missing)
-- `jq`
 - `ssh`
 - `dig`
 - `docker`
 - `openssl`
 - `curl`
+
+For `--destroy`, only `linode-cli` is required.
+
+If you choose to run deploy from the wizard (`--run-deploy`), it also requires:
+
 - `bin/kamal`
 - `bin/load-secrets`
 
@@ -44,6 +48,31 @@ The script checks for:
 bin/upright-linode-setup
 ```
 
+### Python run (experimental)
+
+```bash
+bin/upright-linode-setup.py
+```
+
+Python deploy modes:
+
+- `--deploy-mode local` (default): wizard writes local `bin/load-secrets` + `bin/setup-pass-secrets`; deploy needs `bin/kamal`
+- `--deploy-mode remote-pass`: deploy from app node via SSH using `pass` on the remote host
+
+`bin/setup-pass-secrets` supports both flows:
+- create a new GPG key
+- use an existing key, then run a GPG unlock/sign probe (prompts for passphrase) before writing secrets to `pass`
+- if `gpg`/`pass` are missing, it auto-attempts install by platform:
+  - macOS: `brew install gnupg pass pinentry-mac`
+  - Linux: `apt-get`/`dnf`/`yum`/`pacman` (first detected)
+
+Python local app bootstrap options:
+
+- `--local-repo-path /path/to/app` target Rails app repo (default inside setup-scripts repo, inferred from image, e.g. `./upright`)
+- `--local-repo-url https://github.com/<owner>/<repo>.git` clone app repo when missing
+- local deploy mode auto-runs local app bootstrap (`rbenv` + Ruby install, `bundle add upright`, `rails db:prepare`)
+- `--local-ruby-version 3.4.2` override Ruby version used with rbenv (must be `>= 3.4`)
+
 ### Agent / CI run (non-interactive)
 
 ```bash
@@ -51,7 +80,7 @@ bin/upright-linode-setup \
   --dry-run \
   --non-interactive \
   --yes \
-  --root-domain ckley.net \
+  --root-domain example.com \
   --dns-mode manual \
   --manual-dns-confirmed \
   --skip-deploy \
@@ -63,7 +92,7 @@ bin/upright-linode-setup \
 ```bash
 bin/upright-linode-setup-agent \
   --dry-run \
-  --root-domain ckley.net
+  --root-domain example.com
 ```
 
 Wrapper defaults:
@@ -77,6 +106,7 @@ Wrapper defaults:
 Notes:
 
 - `--non-interactive` disables prompts and uses flags/defaults only.
+- Default registry values are placeholders (`your-github-username`); set `--registry-username` and `--image-name` before `--run-deploy`.
 - For SSH keys, use one of:
   - `--ssh-key-source linode-all`
   - `--ssh-key-source linode-ids --ssh-key-ids "123,456"`
@@ -146,9 +176,27 @@ Then it will:
 If deploy is skipped, run:
 
 ```bash
+bin/setup-pass-secrets
 eval "$(bin/load-secrets)"
 bin/kamal setup
 bin/kamal deploy
+```
+
+In local deploy mode, the Python wizard now runs secret setup/validation (`bin/setup-pass-secrets`, then `bin/load-secrets`) before prompting to run Kamal deploy.
+
+If automated local deploy is requested but repo prerequisites are missing, the Python wizard now prints local bootstrap steps (`rbenv`, Ruby, `bundle add upright`, `db:prepare`, `bin/setup-pass-secrets`, then Kamal deploy).
+
+After a successful deploy, the Python wizard writes `linode-passwords.txt` in the local app repo path with per-node `root_password` and `deploy_password` values captured during provisioning.
+
+For remote deploy automation, provide:
+
+```bash
+bin/upright-linode-setup.py \
+  --run-deploy \
+  --deploy-mode remote-pass \
+  --remote-repo-path /home/deploy/upright \
+  --remote-repo-url https://github.com/<owner>/<repo>.git \
+  --pass-prefix upright
 ```
 
 ## DNS Modes
@@ -202,18 +250,18 @@ Examples:
 
 1. PAT validation
 2. typed confirmation (`DESTROY`)
-3. DNS deletion for managed modes (`linode-dns` / `cloudflare-dns`)
-4. Linode deletion using IDs from state
+3. DNS deletion for managed modes (`linode-dns` / `cloudflare-dns`) using tracked DNS record IDs from state
+4. Linode deletion using IDs from state, with fallback lookup by expected Linode label (`upright-<code>-<root-domain-with-dashes>`) when IDs are missing
 5. optional StackScript deletion
 6. state archive to `infra/state.destroyed.<timestamp>.json`
 
-For `manual` DNS mode, DNS deletion is skipped.
+For `manual` DNS mode, DNS deletion is skipped unless you override state with `--dns-mode linode-dns` or `--dns-mode cloudflare-dns`.
 
 ## Security Notes
 
 - PAT and Cloudflare token are never written to disk.
 - Secrets remain env-backed through `.kamal/secrets`.
-- Use `pass` + `bin/load-secrets` for deploy secret loading.
+- Use `bin/setup-pass-secrets` + `bin/load-secrets` for deploy secret loading via `pass`.
 
 ## Recommended First Test
 

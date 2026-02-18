@@ -1,4 +1,6 @@
 infra/
+upright/
+linode-passwords.txt
 *.log
 .DS_Store
 scripts/__pycache__/
