@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SETUP_SCRIPT="${SCRIPT_DIR}/upright-linode-setup"
+
+has_flag() {
+  local needle="$1"
+  shift
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == "$needle" || "$arg" == "${needle}="* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+ARGS=("$@")
+CMD=("$SETUP_SCRIPT")
+
+if ! has_flag "--non-interactive" "${ARGS[@]}"; then
+  CMD+=(--non-interactive)
+fi
+if ! has_flag "--yes" "${ARGS[@]}"; then
+  CMD+=(--yes)
+fi
+if ! has_flag "--run-deploy" "${ARGS[@]}" && ! has_flag "--skip-deploy" "${ARGS[@]}"; then
+  CMD+=(--skip-deploy)
+fi
+if ! has_flag "--dns-mode" "${ARGS[@]}"; then
+  CMD+=(--dns-mode manual --manual-dns-confirmed)
+fi
+if ! has_flag "--output-json" "${ARGS[@]}"; then
+  CMD+=(--output-json "/tmp/upright-agent-output.json")
+fi
+
+CMD+=("${ARGS[@]}")
+exec "${CMD[@]}"
