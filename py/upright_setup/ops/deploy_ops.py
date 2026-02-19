@@ -3,6 +3,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import platform
 import re
 import secrets
 import shlex
@@ -597,12 +598,32 @@ ADMIN_PASSWORD=$ADMIN_PASSWORD
         check: bool = True,
         input_text: str | None = None,
     ) -> str:
+        wrapped = f"bash -lc {shlex.quote(remote_cmd)}"
         return self.run(
-            ["ssh", "-p", self.cfg.ssh_port, self._ssh_target(), "bash", "-lc", remote_cmd],
+            ["ssh", "-p", self.cfg.ssh_port, self._ssh_target(), wrapped],
             capture=capture,
             check=check,
             input_text=input_text,
         )
+
+    def _ssh_run_with_progress(self, remote_cmd: str, *, progress_label: str) -> None:
+        wrapped = f"bash -lc {shlex.quote(remote_cmd)}"
+        proc = subprocess.Popen(["ssh", "-p", self.cfg.ssh_port, self._ssh_target(), wrapped], cwd=self.cwd)
+        start = time.monotonic()
+        last_log = 0.0
+        while True:
+            rc = proc.poll()
+            now = time.monotonic()
+            elapsed = int(now - start)
+            if rc is not None:
+                if rc != 0:
+                    self.die(f"{progress_label} failed (exit {rc})")
+                self.info(f"{progress_label} complete ({elapsed}s)")
+                return
+            if now - last_log >= 10:
+                self.info(f"{progress_label} in progress... ({elapsed}s)")
+                last_log = now
+            time.sleep(0.5)
 
     def _remote_bootstrap_script(self) -> str:
         return """#!/usr/bin/env bash
@@ -610,12 +631,49 @@ set -euo pipefail
 
 REPO_PATH="${1:-$HOME/upright}"
 PASS_PREFIX="${2:-upright}"
+RUBY_VERSION="${3:-3.4.2}"
 
 if command -v apt-get >/dev/null 2>&1; then
-  sudo apt-get update -y >/dev/null 2>&1 || true
-  sudo apt-get install -y gnupg2 pass >/dev/null 2>&1 || true
+  echo "[remote] ensuring apt packages: gnupg/pass + ruby build deps"
+  export DEBIAN_FRONTEND=noninteractive
+  sudo apt-get update -y >/dev/null
+  sudo apt-get install -y gnupg2 pass build-essential autoconf bison libssl-dev \
+    libyaml-dev libreadline-dev zlib1g-dev libffi-dev libgdbm-dev libncurses5-dev \
+    libdb-dev uuid-dev >/dev/null
 fi
 
+echo "[remote] ensuring rbenv + ruby-build"
+export RBENV_ROOT="${RBENV_ROOT:-$HOME/.rbenv}"
+if [[ ! -d "${RBENV_ROOT}" ]]; then
+  git clone --depth 1 https://github.com/rbenv/rbenv.git "${RBENV_ROOT}" >/dev/null 2>&1
+fi
+mkdir -p "${RBENV_ROOT}/plugins"
+if [[ ! -d "${RBENV_ROOT}/plugins/ruby-build" ]]; then
+  git clone --depth 1 https://github.com/rbenv/ruby-build.git "${RBENV_ROOT}/plugins/ruby-build" >/dev/null 2>&1
+fi
+if ! grep -q 'upright-rbenv-profile' "$HOME/.profile" 2>/dev/null; then
+  cat >> "$HOME/.profile" <<'EOF_RBENV_PROFILE'
+# upright-rbenv-profile
+export RBENV_ROOT="$HOME/.rbenv"
+export PATH="$RBENV_ROOT/bin:$RBENV_ROOT/shims:$PATH"
+if command -v rbenv >/dev/null 2>&1; then
+  eval "$(rbenv init - bash)" >/dev/null 2>&1 || true
+fi
+EOF_RBENV_PROFILE
+fi
+export PATH="${RBENV_ROOT}/bin:${RBENV_ROOT}/shims:${PATH}"
+eval "$(rbenv init - bash)"
+echo "[remote] installing Ruby ${RUBY_VERSION} and bundler"
+rbenv install -s "${RUBY_VERSION}"
+rbenv global "${RUBY_VERSION}"
+gem install bundler --no-document
+rbenv rehash
+if ! command -v ruby >/dev/null 2>&1; then
+  echo "ruby missing from PATH after rbenv bootstrap" >&2
+  exit 1
+fi
+
+echo "[remote] ensuring gpg/pass initialization"
 if ! gpg --list-secret-keys --with-colons | grep -q '^sec:'; then
   gpg --batch --yes --pinentry-mode loopback --passphrase '' \
     --quick-generate-key "Upright Deploy <deploy@$(hostname -f 2>/dev/null || hostname)>" default default 0
@@ -626,6 +684,7 @@ if [[ -n "${KEY_ID}" ]]; then
   pass init "${KEY_ID}" >/dev/null 2>&1 || true
 fi
 
+echo "[remote] writing ${REPO_PATH}/bin/load-secrets"
 mkdir -p "${REPO_PATH}/bin"
 cat > "${REPO_PATH}/bin/load-secrets" <<'EOS'
 #!/usr/bin/env bash
@@ -646,13 +705,7 @@ echo "Remote bootstrap ready: REPO_PATH=${REPO_PATH} PASS_PREFIX=${PASS_PREFIX}"
 """
 
     def _ensure_remote_bootstrap_script(self) -> None:
-        exists = self._ssh_run(
-            "if command -v upright-remote-pass-bootstrap >/dev/null 2>&1; then echo yes; else echo no; fi",
-            capture=True,
-        ).strip()
-        if exists == "yes":
-            return
-
+        self.info("Uploading remote bootstrap helper to app node")
         script = self._remote_bootstrap_script()
         self._ssh_run("cat > /tmp/upright-remote-pass-bootstrap", input_text=script)
         self._ssh_run(
@@ -660,23 +713,30 @@ echo "Remote bootstrap ready: REPO_PATH=${REPO_PATH} PASS_PREFIX=${PASS_PREFIX}"
             "&& rm -f /tmp/upright-remote-pass-bootstrap"
         )
 
-    def _ensure_remote_repo(self, repo_path: str) -> None:
+    def _ensure_remote_repo(self, repo_path: str, *, local_repo_path: Path | None = None) -> None:
         quoted_path = shlex.quote(repo_path)
         if self.cfg.remote_repo_url:
             quoted_url = shlex.quote(self.cfg.remote_repo_url)
             self._ssh_run(
                 f"if [ ! -d {quoted_path} ]; then git clone --depth 1 {quoted_url} {quoted_path}; fi"
             )
-        else:
-            has_repo = self._ssh_run(
-                f"if [ -d {quoted_path} ]; then echo yes; else echo no; fi",
-                capture=True,
-            ).strip()
-            if has_repo != "yes":
-                self.die(
-                    f"Remote repo path missing on app node: {repo_path}. "
-                    "Set --remote-repo-url to auto-clone."
-                )
+            return
+
+        if local_repo_path and local_repo_path.exists():
+            self._sync_local_repo_to_remote(local_repo_path, repo_path)
+            return
+
+        has_repo = self._ssh_run(
+            f"if [ -d {quoted_path} ]; then echo yes; else echo no; fi",
+            capture=True,
+        ).strip()
+        if has_repo == "yes":
+            return
+
+        self.die(
+            f"Remote repo path missing on app node: {repo_path}. "
+            "Set --remote-repo-url or provide a local app repo path to upload over SSH."
+        )
 
     def _seed_remote_pass_entry(self, key: str, env_var: str, prompt: str) -> None:
         entry = f"{self.cfg.pass_prefix}/{key}"
@@ -703,13 +763,18 @@ echo "Remote bootstrap ready: REPO_PATH=${REPO_PATH} PASS_PREFIX=${PASS_PREFIX}"
         self.check_dependency("ssh")
         repo_path = self.cfg.remote_repo_path or f"/home/{self.cfg.deploy_user}/upright"
         pass_prefix = self.cfg.pass_prefix or "upright"
+        local_repo = self.local_repo_dir()
 
         self.info(f"Remote deploy mode: remote-pass (target={self._ssh_target()})")
         self._ensure_remote_bootstrap_script()
-        self._ensure_remote_repo(repo_path)
+        self._ensure_remote_repo(repo_path, local_repo_path=local_repo)
 
-        self._ssh_run(
-            f"/usr/local/bin/upright-remote-pass-bootstrap {shlex.quote(repo_path)} {shlex.quote(pass_prefix)}"
+        ruby_version = self.preferred_ruby_version()
+        self.info("Running remote bootstrap (packages, Ruby toolchain, pass store)")
+        self._ssh_run_with_progress(
+            f"/usr/local/bin/upright-remote-pass-bootstrap "
+            f"{shlex.quote(repo_path)} {shlex.quote(pass_prefix)} {shlex.quote(ruby_version)}",
+            progress_label="remote bootstrap",
         )
 
         self._seed_remote_pass_entry(
@@ -723,13 +788,54 @@ echo "Remote bootstrap ready: REPO_PATH=${REPO_PATH} PASS_PREFIX=${PASS_PREFIX}"
             "Remote secret ADMIN_PASSWORD: ",
         )
 
+        self.info("Remote preflight: verifying ruby, bundler, and kamal wrapper")
+        preflight_cmd = (
+            'export RBENV_ROOT="${RBENV_ROOT:-$HOME/.rbenv}" && '
+            'export PATH="$RBENV_ROOT/bin:$RBENV_ROOT/shims:$PATH" && '
+            'eval "$(rbenv init - bash)" >/dev/null 2>&1 && '
+            'export BUNDLE_WITHOUT="${BUNDLE_WITHOUT:-development:test}" && '
+            f"cd {shlex.quote(repo_path)} && "
+            'echo "[remote] ruby: $(ruby -v)" && '
+            'echo "[remote] bundler: $(bundle -v)" && '
+            'if [ -x bin/kamal ]; then echo "[remote] kamal wrapper: bin/kamal"; '
+            'else echo "[remote] missing bin/kamal wrapper" >&2; exit 1; fi'
+        )
+        self._ssh_run(preflight_cmd)
+
+        self.info("Remote dependency install: ensuring bundle gems for Kamal")
+        bundle_cmd = (
+            "set -euo pipefail; "
+            'export RBENV_ROOT="${RBENV_ROOT:-$HOME/.rbenv}"; '
+            'export PATH="$RBENV_ROOT/bin:$RBENV_ROOT/shims:$PATH"; '
+            'eval "$(rbenv init - bash)" >/dev/null 2>&1; '
+            'export BUNDLE_WITHOUT="${BUNDLE_WITHOUT:-development:test}"; '
+            f"cd {shlex.quote(repo_path)}; "
+            'echo "[remote] bundle check"; '
+            "if bundle check >/dev/null 2>&1; then "
+            'echo "[remote] bundle already satisfied"; '
+            "else "
+            'echo "[remote] running bundle install"; '
+            "bundle install; "
+            "fi"
+        )
+        self._ssh_run_with_progress(bundle_cmd, progress_label="remote bundle install")
+
         self.set_phase("deploying")
         deploy_cmd = (
-            f"cd {shlex.quote(repo_path)} && "
-            f"PASS_PREFIX={shlex.quote(pass_prefix)} eval \"$(bin/load-secrets)\" && "
-            "bin/kamal setup && bin/kamal deploy"
+            "set -euo pipefail; "
+            'export RBENV_ROOT="${RBENV_ROOT:-$HOME/.rbenv}"; '
+            'export PATH="$RBENV_ROOT/bin:$RBENV_ROOT/shims:$PATH"; '
+            'eval "$(rbenv init - bash)" >/dev/null 2>&1; '
+            'export BUNDLE_WITHOUT="${BUNDLE_WITHOUT:-development:test}"; '
+            f"cd {shlex.quote(repo_path)}; "
+            'echo "[remote] loading deploy secrets"; '
+            f'PASS_PREFIX={shlex.quote(pass_prefix)} eval "$(bin/load-secrets)"; '
+            'echo "[remote] running kamal setup"; '
+            "bin/kamal setup; "
+            'echo "[remote] running kamal deploy"; '
+            "bin/kamal deploy"
         )
-        self._ssh_run(deploy_cmd)
+        self._ssh_run_with_progress(deploy_cmd, progress_label="remote kamal setup + deploy")
         self.set_phase("deployed")
         self.write_local_password_report(self.local_repo_dir())
         self.write_remote_password_report(repo_path)
@@ -768,6 +874,131 @@ echo "Remote bootstrap ready: REPO_PATH=${REPO_PATH} PASS_PREFIX=${PASS_PREFIX}"
             detail = (verify.stderr or verify.stdout).strip() or "bin/load-secrets failed"
             self.die(f"Local deploy secrets validation failed after setup: {detail}")
         self.info("Local deploy secrets validated")
+
+    def ensure_local_repo_has_commit(self, repo_path: Path) -> None:
+        if self.repo_has_git_commits(repo_path):
+            return
+
+        self.warn(
+            f"Local repo has no git commits; creating initial commit for Kamal in {self.local_repo_display(repo_path)}"
+        )
+        if not (repo_path / ".git").exists():
+            self.run(["git", "-C", str(repo_path), "init"])
+
+        name = subprocess.run(
+            ["git", "-C", str(repo_path), "config", "--get", "user.name"],
+            cwd=self.cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        email = subprocess.run(
+            ["git", "-C", str(repo_path), "config", "--get", "user.email"],
+            cwd=self.cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        if not name:
+            self.run(["git", "-C", str(repo_path), "config", "user.name", "Upright Setup Wizard"])
+        if not email:
+            self.run(["git", "-C", str(repo_path), "config", "user.email", "upright-setup@local"])
+
+        self.run(["git", "-C", str(repo_path), "add", "-A"])
+        self.run(
+            [
+                "git",
+                "-C",
+                str(repo_path),
+                "commit",
+                "--allow-empty",
+                "-m",
+                "chore: initial app scaffold for kamal",
+            ]
+        )
+        self.info("Created initial git commit for Kamal")
+
+    def infer_repo_origin_url(self, repo_path: Path) -> str:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_path), "remote", "get-url", "origin"],
+            cwd=self.cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return ""
+        url = (proc.stdout or "").strip()
+        if not url:
+            return ""
+        if url.startswith("/") or url.startswith("file://"):
+            return ""
+        return url
+
+    def _sync_local_repo_to_remote(self, local_repo_path: Path, remote_repo_path: str) -> None:
+        self.info(
+            f"Syncing local repo to app node via SSH: {self.local_repo_display(local_repo_path)} -> {remote_repo_path}"
+        )
+        self.ensure_local_repo_has_commit(local_repo_path)
+
+        remote_q = shlex.quote(remote_repo_path)
+        target = self._ssh_target()
+        port = self.cfg.ssh_port
+
+        if shutil.which("rsync"):
+            rsync_cmd = [
+                "rsync",
+                "-az",
+                "--delete",
+                "-e",
+                f"ssh -p {port}",
+                f"{str(local_repo_path).rstrip('/')}/",
+                f"{target}:{remote_repo_path.rstrip('/')}/",
+            ]
+            proc = subprocess.run(rsync_cmd, cwd=self.cwd, capture_output=True, text=True, check=False)
+            if proc.returncode == 0:
+                self.info("Local repo sync complete via rsync")
+                return
+            detail = (proc.stderr or proc.stdout).strip()
+            self.warn(f"rsync sync failed; falling back to tar stream: {detail}")
+
+        remote_prepare = (
+            f"mkdir -p {remote_q} && "
+            f"find {remote_q} -mindepth 1 -maxdepth 1 -exec rm -rf -- {{}} +"
+        )
+        self._ssh_run(remote_prepare)
+
+        remote_extract = f"tar -xzf - -C {remote_q}"
+        local_cmd = (
+            f"tar -C {shlex.quote(str(local_repo_path))} -czf - . | "
+            f"ssh -p {shlex.quote(port)} {shlex.quote(target)} "
+            f"{shlex.quote(f'bash -lc {shlex.quote(remote_extract)}')}"
+        )
+        self.shell(local_cmd)
+        self.info("Local repo sync complete via tar stream")
+
+    def maybe_switch_to_remote_pass_for_arm(self, repo_path: Path) -> bool:
+        is_arm_mac = platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"}
+        if not is_arm_mac:
+            return False
+
+        self.warn(
+            "Detected ARM macOS local deploy with amd64 image target. "
+            "Docker/QEMU emulation may segfault during Kamal build."
+        )
+        if self.cfg.non_interactive:
+            self.die(
+                "Use --deploy-mode remote-pass for ARM macOS automation to avoid QEMU build failures."
+            )
+
+        choice = input("Switch to remote-pass deploy on app node now? [Y/n]: ").strip() or "Y"
+        if not re.match(r"^[Yy]$", choice):
+            self.warn("Continuing local deploy mode (QEMU build may fail)")
+            return False
+
+        self.cfg.deploy_mode = "remote-pass"
+        self._run_remote_pass_deploy()
+        return True
 
     def run_kamal_deploy(self) -> None:
         if self.cfg.dry_run:
@@ -808,7 +1039,11 @@ echo "Remote bootstrap ready: REPO_PATH=${REPO_PATH} PASS_PREFIX=${PASS_PREFIX}"
             self.warn("Skipped kamal deploy")
             return
 
+        if self.maybe_switch_to_remote_pass_for_arm(repo_path):
+            return
+
         self.ensure_local_deploy_secrets(repo_path)
+        self.ensure_local_repo_has_commit(repo_path)
 
         if self.cfg.run_deploy != "yes":
             yn = input("Run kamal setup + deploy now? [y/N]: ").strip()

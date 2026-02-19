@@ -58,6 +58,8 @@ Python deploy modes:
 
 - `--deploy-mode local` (default): wizard writes local `bin/load-secrets` + `bin/setup-pass-secrets`; deploy needs `bin/kamal`
 - `--deploy-mode remote-pass`: deploy from app node via SSH using `pass` on the remote host
+  - default repo source: local app repo is uploaded over SSH to app node
+  - optional override: set `--remote-repo-url` to clone from git on app node
 
 `bin/setup-pass-secrets` supports both flows:
 - create a new GPG key
@@ -72,6 +74,19 @@ Python local app bootstrap options:
 - `--local-repo-url https://github.com/<owner>/<repo>.git` clone app repo when missing
 - local deploy mode auto-runs local app bootstrap (`rbenv` + Ruby install, `bundle add upright`, `rails db:prepare`)
 - `--local-ruby-version 3.4.2` override Ruby version used with rbenv (must be `>= 3.4`)
+
+StackScript remote bootstrap source (GitHub-hosted):
+
+- StackScript now fetches and runs `scripts/bootstrap/upright-host-bootstrap.sh` from GitHub after base host setup.
+- Defaults:
+  - repo: `mighteejim/upright-setup-scripts`
+  - ref: `main`
+  - path: `scripts/bootstrap/upright-host-bootstrap.sh`
+- Optional env overrides before running wizard:
+  - `UPRIGHT_BOOTSTRAP_REPO`
+  - `UPRIGHT_BOOTSTRAP_REF`
+  - `UPRIGHT_BOOTSTRAP_PATH`
+  - `UPRIGHT_BOOTSTRAP_SHA256` (if set, StackScript verifies checksum before execute)
 
 ### Agent / CI run (non-interactive)
 
@@ -183,6 +198,8 @@ bin/kamal deploy
 ```
 
 In local deploy mode, the Python wizard now runs secret setup/validation (`bin/setup-pass-secrets`, then `bin/load-secrets`) before prompting to run Kamal deploy.
+If the local app repo has no git commits, the wizard creates an initial commit before running Kamal (Kamal requires a valid `HEAD`).
+On ARM macOS, the wizard warns about `amd64` QEMU build instability and offers to switch to `--deploy-mode remote-pass` automatically.
 
 If automated local deploy is requested but repo prerequisites are missing, the Python wizard now prints local bootstrap steps (`rbenv`, Ruby, `bundle add upright`, `db:prepare`, `bin/setup-pass-secrets`, then Kamal deploy).
 

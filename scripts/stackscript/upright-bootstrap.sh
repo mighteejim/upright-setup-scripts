@@ -7,6 +7,12 @@
 # <UDF name="NODE_FQDN" label="Node FQDN" default="" />
 # <UDF name="ENABLE_FAIL2BAN" label="Enable fail2ban (yes|no)" default="yes" />
 # <UDF name="TIMEZONE" label="Timezone" default="UTC" />
+# <UDF name="RUBY_VERSION" label="Ruby Version" default="3.4.2" />
+# <UDF name="BOOTSTRAP_REPO" label="Bootstrap Repo (owner/repo)" default="mighteejim/upright-setup-scripts" />
+# <UDF name="BOOTSTRAP_REF" label="Bootstrap Ref (tag/sha)" default="main" />
+# <UDF name="BOOTSTRAP_PATH" label="Bootstrap Script Path" default="scripts/bootstrap/upright-host-bootstrap.sh" />
+# <UDF name="BOOTSTRAP_SHA256" label="Bootstrap Script SHA256 (optional)" default="" />
+# <UDF name="BOOTSTRAP_URL" label="Bootstrap Raw URL Override (optional)" default="" />
 set -euo pipefail
 
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
@@ -17,6 +23,12 @@ NODE_ROLE="${NODE_ROLE:-app}"
 NODE_FQDN="${NODE_FQDN:-}"
 ENABLE_FAIL2BAN="${ENABLE_FAIL2BAN:-yes}"
 TIMEZONE="${TIMEZONE:-UTC}"
+RUBY_VERSION="${RUBY_VERSION:-3.4.2}"
+BOOTSTRAP_REPO="${BOOTSTRAP_REPO:-mighteejim/upright-setup-scripts}"
+BOOTSTRAP_REF="${BOOTSTRAP_REF:-main}"
+BOOTSTRAP_PATH="${BOOTSTRAP_PATH:-scripts/bootstrap/upright-host-bootstrap.sh}"
+BOOTSTRAP_SHA256="${BOOTSTRAP_SHA256:-}"
+BOOTSTRAP_URL="${BOOTSTRAP_URL:-}"
 
 if [[ -z "${DEPLOY_SSH_PUBKEY}" ]]; then
   echo "DEPLOY_SSH_PUBKEY is required" >&2
@@ -48,8 +60,7 @@ chmod 440 "/etc/sudoers.d/90-${DEPLOY_USER}"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get upgrade -y
-apt-get install -y \
-  ca-certificates curl gnupg gnupg2 jq git pass ufw unzip tree software-properties-common
+apt-get install -y ca-certificates curl gnupg jq git ufw unzip tree software-properties-common
 
 if [[ "${ENABLE_FAIL2BAN}" == "yes" ]]; then
   apt-get install -y fail2ban
@@ -73,83 +84,20 @@ apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin do
 systemctl enable --now docker
 usermod -aG docker "${DEPLOY_USER}"
 
-if [[ -n "${NODE_FQDN}" ]]; then
-  SHORT_HOST="${NODE_FQDN%%.*}"
-  hostnamectl set-hostname "${NODE_FQDN}" || true
-  echo "${NODE_FQDN}" > /etc/hostname
-  mkdir -p /etc/cloud/cloud.cfg.d
-  cat > /etc/cloud/cloud.cfg.d/99_upright_hostname.cfg <<EOF_HOSTCFG
-preserve_hostname: true
-fqdn: ${NODE_FQDN}
-hostname: ${SHORT_HOST}
-EOF_HOSTCFG
-  if grep -qE '^127\.0\.1\.1[[:space:]]' /etc/hosts; then
-    sed -i "s/^127\\.0\\.1\\.1[[:space:]].*/127.0.1.1 ${NODE_FQDN} ${SHORT_HOST}/" /etc/hosts
-  else
-    echo "127.0.1.1 ${NODE_FQDN} ${SHORT_HOST}" >> /etc/hosts
-  fi
+if [[ -z "${BOOTSTRAP_URL}" ]]; then
+  BOOTSTRAP_URL="https://raw.githubusercontent.com/${BOOTSTRAP_REPO}/${BOOTSTRAP_REF}/${BOOTSTRAP_PATH}"
 fi
 
-timedatectl set-timezone "${TIMEZONE}" || true
+TMP_BOOTSTRAP="/tmp/upright-host-bootstrap.sh"
+echo "Fetching remote bootstrap: ${BOOTSTRAP_URL}"
+curl -fsSL "${BOOTSTRAP_URL}" -o "${TMP_BOOTSTRAP}"
 
-grep -Eq '^Port ' /etc/ssh/sshd_config \
-  && sed -i "s/^#\?Port .*/Port ${SSH_PORT}/" /etc/ssh/sshd_config \
-  || echo "Port ${SSH_PORT}" >> /etc/ssh/sshd_config
-
-grep -Eq '^PermitRootLogin ' /etc/ssh/sshd_config \
-  && sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config \
-  || echo 'PermitRootLogin prohibit-password' >> /etc/ssh/sshd_config
-
-grep -Eq '^PasswordAuthentication ' /etc/ssh/sshd_config \
-  && sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config \
-  || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
-
-echo "${NODE_ROLE}" > /etc/upright-role
-chmod 644 /etc/upright-role
-
-cat > /usr/local/bin/upright-remote-pass-bootstrap <<'REMOTE_BOOTSTRAP'
-#!/usr/bin/env bash
-set -euo pipefail
-
-REPO_PATH="${1:-$HOME/upright}"
-PASS_PREFIX="${2:-upright}"
-
-if command -v apt-get >/dev/null 2>&1; then
-  sudo apt-get update -y >/dev/null 2>&1 || true
-  sudo apt-get install -y gnupg2 pass >/dev/null 2>&1 || true
+if [[ -n "${BOOTSTRAP_SHA256}" ]]; then
+  echo "${BOOTSTRAP_SHA256}  ${TMP_BOOTSTRAP}" | sha256sum -c -
 fi
 
-if ! gpg --list-secret-keys --with-colons | grep -q '^sec:'; then
-  gpg --batch --yes --pinentry-mode loopback --passphrase '' \
-    --quick-generate-key "Upright Deploy <deploy@$(hostname -f 2>/dev/null || hostname)>" default default 0
-fi
+chmod 0755 "${TMP_BOOTSTRAP}"
+export DEPLOY_USER DEPLOY_PASSWORD DEPLOY_SSH_PUBKEY SSH_PORT NODE_ROLE NODE_FQDN ENABLE_FAIL2BAN TIMEZONE RUBY_VERSION
+"${TMP_BOOTSTRAP}"
 
-KEY_ID="$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/ {print $5; exit}')"
-if [[ -n "${KEY_ID}" ]]; then
-  pass init "${KEY_ID}" >/dev/null 2>&1 || true
-fi
-
-mkdir -p "${REPO_PATH}/bin"
-cat > "${REPO_PATH}/bin/load-secrets" <<'EOF_SECRETS'
-#!/usr/bin/env bash
-set -euo pipefail
-PASS_PREFIX="${PASS_PREFIX:-upright}"
-read_secret() {
-  local key="$1"
-  pass show "${PASS_PREFIX}/${key}" 2>/dev/null | head -n1
-}
-cat <<EOF
-export KAMAL_REGISTRY_PASSWORD=$(printf %q "$(read_secret kamal/registry_password)")
-export ADMIN_PASSWORD=$(printf %q "$(read_secret admin_password)")
-EOF
-EOF_SECRETS
-chmod +x "${REPO_PATH}/bin/load-secrets"
-echo "Remote bootstrap ready: REPO_PATH=${REPO_PATH} PASS_PREFIX=${PASS_PREFIX}"
-REMOTE_BOOTSTRAP
-chmod 0755 /usr/local/bin/upright-remote-pass-bootstrap
-
-systemctl daemon-reload || true
-systemctl restart ssh.socket || true
-systemctl restart ssh || systemctl restart sshd || true
-
-echo "Bootstrap complete for role=${NODE_ROLE} user=${DEPLOY_USER} ssh_port=${SSH_PORT}"
+echo "StackScript complete for role=${NODE_ROLE} user=${DEPLOY_USER} ssh_port=${SSH_PORT}"

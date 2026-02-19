@@ -14,12 +14,23 @@ import urllib.parse
 import urllib.request
 from dataclasses import asdict
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from ..models import Config
 
 class ProvisionOps:
+    def _bootstrap_repo(self) -> str:
+        return os.environ.get("UPRIGHT_BOOTSTRAP_REPO", "mighteejim/upright-setup-scripts").strip()
+
+    def _bootstrap_ref(self) -> str:
+        return os.environ.get("UPRIGHT_BOOTSTRAP_REF", "main").strip()
+
+    def _bootstrap_path(self) -> str:
+        return os.environ.get("UPRIGHT_BOOTSTRAP_PATH", "scripts/bootstrap/upright-host-bootstrap.sh").strip()
+
+    def _bootstrap_sha256(self) -> str:
+        return os.environ.get("UPRIGHT_BOOTSTRAP_SHA256", "").strip()
+
     def ensure_stackscript(self) -> None:
         if self.cfg.dry_run:
             self.info(f"DRY-RUN: would create/update private StackScript '{self.cfg.stackscript_label}'")
@@ -88,6 +99,18 @@ class ProvisionOps:
         if self.cfg.dry_run:
             self.info(f"DRY-RUN: would create node code={code} region={region} fqdn={fqdn}")
             return ""
+        bootstrap_repo = self._bootstrap_repo()
+        bootstrap_ref = self._bootstrap_ref()
+        bootstrap_path = self._bootstrap_path()
+        bootstrap_sha256 = self._bootstrap_sha256()
+        if code == "app":
+            self.info(f"StackScript bootstrap source: {bootstrap_repo}@{bootstrap_ref}:{bootstrap_path}")
+            if bootstrap_ref == "main" and not bootstrap_sha256:
+                self.warn(
+                    "StackScript bootstrap is using mutable ref 'main' without BOOTSTRAP_SHA256; "
+                    "pin UPRIGHT_BOOTSTRAP_REF to a tag/SHA and set UPRIGHT_BOOTSTRAP_SHA256 for reproducible host setup"
+                )
+
         label = f"upright-{code}-{self.cfg.root_domain.replace('.', '-') }"
         root_password = secrets.token_urlsafe(24)
         deploy_password = secrets.token_urlsafe(24)
@@ -100,6 +123,11 @@ class ProvisionOps:
                 "NODE_ROLE": role,
                 "NODE_FQDN": fqdn,
                 "ENABLE_FAIL2BAN": "yes",
+                "RUBY_VERSION": self.preferred_ruby_version(),
+                "BOOTSTRAP_REPO": bootstrap_repo,
+                "BOOTSTRAP_REF": bootstrap_ref,
+                "BOOTSTRAP_PATH": bootstrap_path,
+                "BOOTSTRAP_SHA256": bootstrap_sha256,
             }
         )
         interfaces = '[{"public":{},"primary":true,"firewall_id":null}]'
