@@ -33,8 +33,42 @@
       Next steps (run from your workstation):
       1) SSH to app node as {{ deploy_user }}
       2) Clone/create your Upright Rails app repo
-      3) Add/load deploy secrets (pass + bin/load-secrets)
-      4) Run bin/kamal setup && bin/kamal deploy
+      3) Run ~/bin/setup-pass-secrets on app node
+      4) Add/load deploy secrets via ~/bin/load-secrets
+      5) Run bin/kamal setup && bin/kamal deploy
+
+- name: Ensure deploy user bin directory
+  ansible.builtin.file:
+    path: "/home/{{ deploy_user }}/bin"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+    state: directory
+
+- name: Install setup-pass-secrets helper
+  ansible.builtin.copy:
+    src: setup-pass-secrets
+    dest: "/home/{{ deploy_user }}/bin/setup-pass-secrets"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
+- name: Install load-secrets helper
+  ansible.builtin.copy:
+    src: load-secrets
+    dest: "/home/{{ deploy_user }}/bin/load-secrets"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
+- name: Ensure helper scripts are in deploy user PATH
+  ansible.builtin.lineinfile:
+    path: "/home/{{ deploy_user }}/.profile"
+    line: 'export PATH="$HOME/bin:$PATH"'
+    create: true
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
 
 - name: Write root cluster summary
   ansible.builtin.copy:

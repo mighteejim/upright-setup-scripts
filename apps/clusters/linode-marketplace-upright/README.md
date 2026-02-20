@@ -34,6 +34,8 @@ On app/provisioner node:
 - `/var/log/stackscript.log`
 - `/home/<deploy_user>/.credentials`
 - `/root/.upright-cluster-info`
+- `/home/<deploy_user>/bin/setup-pass-secrets`
+- `/home/<deploy_user>/bin/load-secrets`
 
 ## Scope
 
