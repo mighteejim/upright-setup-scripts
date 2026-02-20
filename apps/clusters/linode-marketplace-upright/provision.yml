@@ -37,30 +37,38 @@
       no_log: true
 
     - name: Create monitor nodes
-      linode.cloud.instance:
-        label: "{{ cluster_name }}-{{ item.code }}-{{ cluster_uuid }}"
-        api_token: "{{ token_password }}"
-        type: "{{ node_type }}"
-        region: "{{ item.region }}"
-        image: "{{ image }}"
-        root_pass: "{{ temp_root_pass }}"
-        authorized_keys:
-          - "{{ provisioner_ssh_pubkey }}"
-          - "{{ deploy_ssh_pubkey }}"
-        interfaces: "{{ (use_linode_interfaces | default(true) | bool) | ternary([{'purpose': 'public', 'primary': true}], omit) }}"
-        private_ip: "{{ (enable_private_ipv4 | default(false) | bool) | ternary(true, omit) }}"
-        tags:
-          - upright
-          - "upright-{{ cluster_uuid }}"
-          - "upright-{{ item.code }}"
-        state: present
+      ansible.builtin.uri:
+        url: https://api.linode.com/v4/linode/instances
+        method: POST
+        headers:
+          Authorization: "Bearer {{ token_password }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          label: "{{ cluster_name }}-{{ item.code }}-{{ cluster_uuid }}"
+          type: "{{ node_type }}"
+          region: "{{ item.region }}"
+          image: "{{ image }}"
+          root_pass: "{{ temp_root_pass }}"
+          authorized_keys:
+            - "{{ provisioner_ssh_pubkey }}"
+            - "{{ deploy_ssh_pubkey }}"
+          tags:
+            - upright
+            - "upright-{{ cluster_uuid }}"
+            - "upright-{{ item.code }}"
+          interface_generation: "{{ (use_linode_interfaces | default(true) | bool) | ternary('linode', omit) }}"
+          interfaces: "{{ (use_linode_interfaces | default(true) | bool) | ternary([{'firewall_id': none, 'default_route': {'ipv4': true, 'ipv6': true}, 'public': {}}], omit) }}"
+          private_ip: "{{ (enable_private_ipv4 | default(false) | bool) | ternary(true, omit) }}"
+        status_code: [200, 201]
+        return_content: true
       loop: "{{ monitor_specs }}"
       loop_control:
         label: "{{ item.code }}"
       register: monitor_create
       retries: 6
       delay: 8
-      until: monitor_create is succeeded
+      until: monitor_create.status in [200, 201]
 
     - name: Normalize monitor node metadata
       ansible.builtin.set_fact:
@@ -69,10 +77,10 @@
         monitor_node:
           code: "{{ item.item.code }}"
           region: "{{ item.item.region }}"
-          label: "{{ item.instance.label }}"
-          linode_id: "{{ item.instance.id }}"
-          ipv4_public: "{{ item.instance.ipv4[0] }}"
-          ipv4_private: "{{ ((item.instance.ipv4 | length > 1) | ternary(item.instance.ipv4[1], '')) }}"
+          label: "{{ item.json.label }}"
+          linode_id: "{{ item.json.id }}"
+          ipv4_public: "{{ item.json.ipv4[0] }}"
+          ipv4_private: "{{ ((item.json.ipv4 | length > 1) | ternary(item.json.ipv4[1], '')) }}"
       loop: "{{ monitor_create.results }}"
       loop_control:
         label: "{{ item.item.code }}"
