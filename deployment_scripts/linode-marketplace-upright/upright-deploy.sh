@@ -68,26 +68,6 @@ if ! [[ "${DNS_TTL_SEC}" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-apt_wait() {
-  local tries=0
-  while pgrep -x apt >/dev/null 2>&1 \
-    || pgrep -x apt-get >/dev/null 2>&1 \
-    || pgrep -x dpkg >/dev/null 2>&1 \
-    || pgrep -x unattended-upgr >/dev/null 2>&1 \
-    || pgrep -x unattended-upgrade >/dev/null 2>&1; do
-    tries=$((tries + 1))
-    if [[ "${tries}" -eq 1 || $((tries % 6)) -eq 0 ]]; then
-      echo "[wait] apt/dpkg busy (${tries}/120); holders:"
-      pgrep -af "apt|apt-get|dpkg|unattended-upgrade|unattended-upgr" || true
-    fi
-    if [[ "$tries" -gt 120 ]]; then
-      echo "apt lock wait timeout" >&2
-      return 1
-    fi
-    sleep 5
-  done
-}
-
 run_retry() {
   local attempts="$1"
   local delay_s="$2"
@@ -134,11 +114,10 @@ trap 'cleanup $? $LINENO' EXIT
 
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
+export APT_LISTCHANGES_FRONTEND=none
 echo "[stage] install bootstrap dependencies"
-apt_wait
-run_retry 10 8 apt-get update -y
-apt_wait
-run_retry 10 8 apt-get install -y git jq curl python3 python3-venv python3-pip ca-certificates
+run_retry 10 8 apt-get -o DPkg::Lock::Timeout=600 update -y
+run_retry 10 8 apt-get -o DPkg::Lock::Timeout=600 install -y git jq curl python3 python3-venv python3-pip ca-certificates
 
 rm -rf "${WORK_DIR}"
 echo "[stage] clone repo ${GIT_REPO}@${GIT_BRANCH}"
