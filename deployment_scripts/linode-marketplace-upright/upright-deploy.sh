@@ -116,8 +116,8 @@ export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 export APT_LISTCHANGES_FRONTEND=none
 echo "[stage] install bootstrap dependencies"
-run_retry 10 8 apt-get -o DPkg::Lock::Timeout=600 update -y
-run_retry 10 8 apt-get -o DPkg::Lock::Timeout=600 install -y git jq curl python3 python3-venv python3-pip ca-certificates
+run_retry 10 8 apt-get update && apt-get upgrade -y
+run_retry 10 8 apt-get install -y git jq curl python3 python3-venv python3-pip ca-certificates
 
 rm -rf "${WORK_DIR}"
 echo "[stage] clone repo ${GIT_REPO}@${GIT_BRANCH}"
@@ -160,6 +160,7 @@ image: "${IMAGE}"
 ord_region: "${ORD_REGION}"
 iad_region: "${IAD_REGION}"
 sea_region: "${SEA_REGION}"
+enable_private_ipv4: false
 bootstrap_ssh_port: 22
 
 token_password: "${TOKEN_PASSWORD}"

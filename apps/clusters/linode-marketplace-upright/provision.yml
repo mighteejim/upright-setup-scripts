@@ -17,6 +17,7 @@
           - cluster_uuid | length > 0
           - dns_mode in ['linode-dns', 'manual']
           - (dns_ttl_sec | int) >= 30
+          - (enable_private_ipv4 | default(false)) in [true, false]
         fail_msg: Missing required variable(s) in group_vars/linode/vars
 
     - name: Build monitor node specs
@@ -45,7 +46,7 @@
         authorized_keys:
           - "{{ provisioner_ssh_pubkey }}"
           - "{{ deploy_ssh_pubkey }}"
-        private_ip: true
+        private_ip: "{{ (enable_private_ipv4 | default(false) | bool) | ternary(true, omit) }}"
         tags:
           - upright
           - "upright-{{ cluster_uuid }}"

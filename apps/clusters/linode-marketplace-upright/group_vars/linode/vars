@@ -6,6 +6,7 @@ image: "linode/ubuntu24.04"
 ord_region: "us-ord"
 iad_region: "us-iad"
 sea_region: "us-sea"
+enable_private_ipv4: false
 
 bootstrap_ssh_port: 22
 

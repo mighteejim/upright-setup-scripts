@@ -41,3 +41,8 @@ On app/provisioner node:
 
 This flow handles infrastructure + baseline host configuration.
 Rails app scaffolding and Kamal deploy are intentionally left as a follow-up operator step.
+
+## Linode Interfaces Note
+
+`private_ip` is disabled by default (`enable_private_ipv4: false`) to support Linode Interfaces.
+If your account/regions support legacy private IP behavior, you can set `enable_private_ipv4: true`.
