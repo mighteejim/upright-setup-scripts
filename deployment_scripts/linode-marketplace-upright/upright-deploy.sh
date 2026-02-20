@@ -76,6 +76,10 @@ apt_wait() {
     || pgrep -x unattended-upgr >/dev/null 2>&1 \
     || pgrep -x unattended-upgrade >/dev/null 2>&1; do
     tries=$((tries + 1))
+    if [[ "${tries}" -eq 1 || $((tries % 6)) -eq 0 ]]; then
+      echo "[wait] apt/dpkg busy (${tries}/120); holders:"
+      pgrep -af "apt|apt-get|dpkg|unattended-upgrade|unattended-upgr" || true
+    fi
     if [[ "$tries" -gt 120 ]]; then
       echo "apt lock wait timeout" >&2
       return 1
@@ -129,6 +133,7 @@ cleanup() {
 trap 'cleanup $? $LINENO' EXIT
 
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
 echo "[stage] install bootstrap dependencies"
 apt_wait
 run_retry 10 8 apt-get update -y
