@@ -1,0 +1,54 @@
+---
+- name: Write credentials and next-step notes
+  ansible.builtin.copy:
+    dest: "/home/{{ deploy_user }}/.credentials"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0600"
+    content: |
+      Upright cluster bootstrap complete.
+
+      Deploy user: {{ deploy_user }}
+      Root domain: {{ root_domain }}
+      Suffix label: {{ upright_suffix_label }}
+
+      {% if root_domain | length > 0 %}
+      App endpoint: app.{{ upright_suffix_label }}.{{ root_domain }}
+      Monitor endpoints:
+      {% if monitor_nodes is defined %}
+      {% for node in monitor_nodes %}
+      - {{ node.code }}.{{ upright_suffix_label }}.{{ root_domain }} -> {{ node.ipv4_public }}
+      {% endfor %}
+      {% endif %}
+      {% else %}
+      App endpoint: {{ app_public_ipv4 }}
+      Monitor endpoints:
+      {% if monitor_nodes is defined %}
+      {% for node in monitor_nodes %}
+      - {{ node.code }} -> {{ node.ipv4_public }}
+      {% endfor %}
+      {% endif %}
+      {% endif %}
+
+      Next steps (run from your workstation):
+      1) SSH to app node as {{ deploy_user }}
+      2) Clone/create your Upright Rails app repo
+      3) Add/load deploy secrets (pass + bin/load-secrets)
+      4) Run bin/kamal setup && bin/kamal deploy
+
+- name: Write root cluster summary
+  ansible.builtin.copy:
+    dest: /root/.upright-cluster-info
+    mode: "0600"
+    content: |
+      cluster_name={{ cluster_name }}
+      cluster_uuid={{ cluster_uuid }}
+      app_public_ipv4={{ app_public_ipv4 }}
+      root_domain={{ root_domain }}
+      upright_suffix_label={{ upright_suffix_label }}
+      dns_mode={{ dns_mode }}
+      {% if monitor_nodes is defined %}
+      {% for node in monitor_nodes %}
+      {{ node.code }}={{ node.ipv4_public }}
+      {% endfor %}
+      {% endif %}

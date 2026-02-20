@@ -29,6 +29,7 @@ The `/playwright` suffix is required for successful WebSocket handshake.
 
 - Deployment runbook: `docs/DEPLOY.md`
 - Troubleshooting log: `docs/TROUBLESHOOTING.md`
+- Marketplace cluster path: `docs/MARKETPLACE_CLUSTER.md`
 
 ## Quick Preflight
 
@@ -48,8 +49,7 @@ bin/kamal deploy
 
 If setup/deploy fails, start with `docs/TROUBLESHOOTING.md`.
 
-## Setup Wizard Implementations
+## Deployment Paths
 
-- Bash (current default): `bin/upright-linode-setup`
-- Python (side-by-side trial): `bin/upright-linode-setup.py`
-- Python remote deploy mode: `bin/upright-linode-setup.py --deploy-mode remote-pass --run-deploy`
+- Marketplace-style cluster (recommended): `deployment_scripts/linode-marketplace-upright/upright-deploy.sh`
+- Legacy local wizards (maintenance only): `bin/upright-linode-setup`, `bin/upright-linode-setup.py`

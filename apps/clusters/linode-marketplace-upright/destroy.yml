@@ -1,0 +1,61 @@
+---
+- name: Destroy Upright monitor nodes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - group_vars/linode/vars
+
+  tasks:
+    - name: Validate destroy inputs
+      ansible.builtin.assert:
+        that:
+          - token_password | length > 0
+          - (monitor_nodes is defined and (monitor_nodes | length) > 0) or (cluster_uuid | length > 0)
+        fail_msg: Missing token_password or cluster identifiers for destroy flow
+
+    - name: Build destroy labels from tracked nodes
+      ansible.builtin.set_fact:
+        destroy_labels: "{{ monitor_nodes | map(attribute='label') | list }}"
+      when: monitor_nodes is defined and (monitor_nodes | length) > 0
+
+    - name: Build destroy labels fallback from cluster UUID
+      ansible.builtin.set_fact:
+        destroy_labels:
+          - "{{ cluster_name }}-ord-{{ cluster_uuid }}"
+          - "{{ cluster_name }}-iad-{{ cluster_uuid }}"
+          - "{{ cluster_name }}-sea-{{ cluster_uuid }}"
+      when: destroy_labels is not defined
+
+    - name: Delete monitor nodes by label
+      linode.cloud.instance:
+        label: "{{ item }}"
+        api_token: "{{ token_password }}"
+        state: absent
+      loop: "{{ destroy_labels }}"
+      loop_control:
+        label: "{{ item }}"
+      register: destroy_nodes
+      retries: 6
+      delay: 8
+      until: destroy_nodes is succeeded
+
+    - name: Delete Linode DNS A records
+      when:
+        - dns_mode == 'linode-dns'
+        - root_domain | length > 0
+        - desired_dns_records is defined
+      linode.cloud.domain_record:
+        api_token: "{{ token_password }}"
+        domain: "{{ root_domain }}"
+        name: "{{ item.name }}"
+        type: A
+        target: "{{ item.target }}"
+        state: absent
+      loop: "{{ desired_dns_records }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: destroy_dns
+      retries: 6
+      delay: 8
+      until: destroy_dns is succeeded

@@ -1,0 +1,115 @@
+---
+- name: Apt update cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 600
+  register: common_apt_update_result
+  retries: 30
+  delay: 10
+  until: common_apt_update_result is succeeded
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - jq
+      - gnupg
+      - pass
+      - unzip
+      - ufw
+      - docker.io
+    state: present
+    lock_timeout: 600
+  register: common_apt_pkg_result
+  retries: 20
+  delay: 10
+  until: common_apt_pkg_result is succeeded
+
+- name: Ensure docker service is enabled
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Read current timezone
+  ansible.builtin.command: timedatectl show --property=Timezone --value
+  register: common_tz_current
+  changed_when: false
+
+- name: Set timezone
+  ansible.builtin.command: "timedatectl set-timezone {{ timezone }}"
+  when: common_tz_current.stdout | trim != timezone
+  changed_when: common_tz_current.stdout | trim != timezone
+
+- name: Ensure deploy user exists
+  ansible.builtin.user:
+    name: "{{ deploy_user }}"
+    shell: /bin/bash
+    groups: sudo,docker
+    append: true
+    create_home: true
+    state: present
+
+- name: Ensure deploy .ssh directory exists
+  ansible.builtin.file:
+    path: "/home/{{ deploy_user }}/.ssh"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0700"
+
+- name: Ensure deploy SSH key is authorized
+  ansible.builtin.lineinfile:
+    path: "/home/{{ deploy_user }}/.ssh/authorized_keys"
+    line: "{{ deploy_ssh_pubkey }}"
+    create: true
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0600"
+
+- name: Configure passwordless sudo for deploy user
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ deploy_user }}"
+    mode: "0440"
+    content: |
+      {{ deploy_user }} ALL=(ALL) NOPASSWD:ALL
+
+- name: Resolve node code
+  ansible.builtin.set_fact:
+    common_node_code: "{{ 'app' if inventory_hostname == 'localhost' else inventory_hostname }}"
+
+- name: Resolve node FQDN
+  ansible.builtin.set_fact:
+    common_node_fqdn: "{{ common_node_code }}.{{ upright_suffix_label }}.{{ root_domain }}"
+  when: root_domain | length > 0
+
+- name: Configure hostname
+  ansible.builtin.hostname:
+    name: "{{ common_node_fqdn }}"
+  when: root_domain | length > 0
+
+- name: Ensure localhost host mapping
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s+'
+    line: "127.0.1.1 {{ common_node_fqdn }} {{ common_node_code }}"
+    create: true
+    mode: "0644"
+  when: root_domain | length > 0
+
+- name: Disable SSH password authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication\s+'
+    line: 'PasswordAuthentication no'
+  notify: Restart SSH
+
+- name: Restrict root SSH auth to keys
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin\s+'
+    line: 'PermitRootLogin prohibit-password'
+  notify: Restart SSH

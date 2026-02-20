@@ -1,0 +1,17 @@
+[app]
+localhost ansible_connection=local
+
+[ord]
+
+[iad]
+
+[sea]
+
+[monitors:children]
+ord
+iad
+sea
+
+[all_upright:children]
+app
+monitors

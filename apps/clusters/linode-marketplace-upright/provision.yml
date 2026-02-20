@@ -1,0 +1,177 @@
+---
+- name: Provision Upright monitor nodes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - group_vars/linode/vars
+
+  tasks:
+    - name: Validate required vars
+      ansible.builtin.assert:
+        that:
+          - token_password | length > 0
+          - provisioner_ssh_pubkey | length > 0
+          - deploy_ssh_pubkey | length > 0
+          - app_public_ipv4 | length > 0
+          - cluster_uuid | length > 0
+          - dns_mode in ['linode-dns', 'manual']
+          - (dns_ttl_sec | int) >= 30
+        fail_msg: Missing required variable(s) in group_vars/linode/vars
+
+    - name: Build monitor node specs
+      ansible.builtin.set_fact:
+        monitor_specs:
+          - code: ord
+            region: "{{ ord_region }}"
+          - code: iad
+            region: "{{ iad_region }}"
+          - code: sea
+            region: "{{ sea_region }}"
+
+    - name: Generate bootstrap root password for monitor nodes
+      ansible.builtin.set_fact:
+        temp_root_pass: "{{ lookup('password', '/dev/null length=40 chars=ascii_letters,digits') }}"
+      no_log: true
+
+    - name: Create monitor nodes
+      linode.cloud.instance:
+        label: "{{ cluster_name }}-{{ item.code }}-{{ cluster_uuid }}"
+        api_token: "{{ token_password }}"
+        type: "{{ node_type }}"
+        region: "{{ item.region }}"
+        image: "{{ image }}"
+        root_pass: "{{ temp_root_pass }}"
+        authorized_keys:
+          - "{{ provisioner_ssh_pubkey }}"
+          - "{{ deploy_ssh_pubkey }}"
+        private_ip: true
+        tags:
+          - upright
+          - "upright-{{ cluster_uuid }}"
+          - "upright-{{ item.code }}"
+        state: present
+      loop: "{{ monitor_specs }}"
+      loop_control:
+        label: "{{ item.code }}"
+      register: monitor_create
+      retries: 6
+      delay: 8
+      until: monitor_create is succeeded
+
+    - name: Normalize monitor node metadata
+      ansible.builtin.set_fact:
+        monitor_nodes: "{{ (monitor_nodes | default([])) + [monitor_node] }}"
+      vars:
+        monitor_node:
+          code: "{{ item.item.code }}"
+          region: "{{ item.item.region }}"
+          label: "{{ item.instance.label }}"
+          linode_id: "{{ item.instance.id }}"
+          ipv4_public: "{{ item.instance.ipv4[0] }}"
+          ipv4_private: "{{ ((item.instance.ipv4 | length > 1) | ternary(item.instance.ipv4[1], '')) }}"
+      loop: "{{ monitor_create.results }}"
+      loop_control:
+        label: "{{ item.item.code }}"
+
+    - name: Wait for monitor SSH
+      ansible.builtin.wait_for:
+        host: "{{ item.ipv4_public }}"
+        port: "{{ bootstrap_ssh_port | int }}"
+        search_regex: OpenSSH
+        delay: 5
+        timeout: 600
+      loop: "{{ monitor_nodes }}"
+      loop_control:
+        label: "{{ item.code }}:{{ item.ipv4_public }}"
+
+    - name: Resolve monitor public IPv4 addresses
+      ansible.builtin.set_fact:
+        ord_public_ipv4: "{{ (monitor_nodes | selectattr('code', 'equalto', 'ord') | first).ipv4_public }}"
+        iad_public_ipv4: "{{ (monitor_nodes | selectattr('code', 'equalto', 'iad') | first).ipv4_public }}"
+        sea_public_ipv4: "{{ (monitor_nodes | selectattr('code', 'equalto', 'sea') | first).ipv4_public }}"
+
+    - name: Write inventory
+      ansible.builtin.copy:
+        dest: hosts
+        mode: "0644"
+        content: |
+          [app]
+          localhost ansible_connection=local
+
+          [ord]
+          ord ansible_host={{ ord_public_ipv4 }} ansible_user=root ansible_port={{ bootstrap_ssh_port }}
+
+          [iad]
+          iad ansible_host={{ iad_public_ipv4 }} ansible_user=root ansible_port={{ bootstrap_ssh_port }}
+
+          [sea]
+          sea ansible_host={{ sea_public_ipv4 }} ansible_user=root ansible_port={{ bootstrap_ssh_port }}
+
+          [monitors:children]
+          ord
+          iad
+          sea
+
+          [all_upright:children]
+          app
+          monitors
+
+    - name: Build desired DNS records
+      ansible.builtin.set_fact:
+        desired_dns_records:
+          - code: app
+            name: "app.{{ upright_suffix_label }}"
+            target: "{{ app_public_ipv4 }}"
+          - code: ord
+            name: "ord.{{ upright_suffix_label }}"
+            target: "{{ ord_public_ipv4 }}"
+          - code: iad
+            name: "iad.{{ upright_suffix_label }}"
+            target: "{{ iad_public_ipv4 }}"
+          - code: sea
+            name: "sea.{{ upright_suffix_label }}"
+            target: "{{ sea_public_ipv4 }}"
+
+    - name: Ensure Linode DNS A records
+      when:
+        - dns_mode == 'linode-dns'
+        - root_domain | length > 0
+      linode.cloud.domain_record:
+        api_token: "{{ token_password }}"
+        domain: "{{ root_domain }}"
+        name: "{{ item.name }}"
+        type: A
+        target: "{{ item.target }}"
+        ttl_sec: "{{ dns_ttl_sec | int }}"
+        state: present
+      loop: "{{ desired_dns_records }}"
+      loop_control:
+        label: "{{ item.name }} -> {{ item.target }}"
+      register: dns_ensure
+      retries: 6
+      delay: 8
+      until: dns_ensure is succeeded
+
+    - name: Persist provisioned node metadata
+      ansible.builtin.blockinfile:
+        path: group_vars/linode/vars
+        marker: "# {mark} PROVISIONED_NODES"
+        insertafter: EOF
+        block: |
+          monitor_nodes:
+          {% for node in monitor_nodes %}
+            - code: {{ node.code }}
+              region: {{ node.region }}
+              label: {{ node.label }}
+              linode_id: {{ node.linode_id }}
+              ipv4_public: {{ node.ipv4_public }}
+              ipv4_private: {{ node.ipv4_private }}
+          {% endfor %}
+
+          desired_dns_records:
+          {% for rec in desired_dns_records %}
+            - code: {{ rec.code }}
+              name: {{ rec.name }}
+              target: {{ rec.target }}
+          {% endfor %}

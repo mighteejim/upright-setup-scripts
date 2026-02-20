@@ -1,0 +1,24 @@
+# populated by deployment StackScript
+cluster_name: "upright"
+cluster_uuid: ""
+node_type: "g6-standard-2"
+image: "linode/ubuntu24.04"
+ord_region: "us-ord"
+iad_region: "us-iad"
+sea_region: "us-sea"
+
+bootstrap_ssh_port: 22
+
+token_password: ""
+provisioner_ssh_pubkey: ""
+deploy_user: "deploy"
+deploy_ssh_pubkey: ""
+timezone: "UTC"
+
+dns_mode: "manual"
+root_domain: ""
+upright_suffix_label: "up"
+dns_ttl_sec: 120
+
+app_label: ""
+app_public_ipv4: ""
