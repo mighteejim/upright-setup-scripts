@@ -160,6 +160,7 @@ image: "${IMAGE}"
 ord_region: "${ORD_REGION}"
 iad_region: "${IAD_REGION}"
 sea_region: "${SEA_REGION}"
+use_linode_interfaces: true
 enable_private_ipv4: false
 bootstrap_ssh_port: 22
 

@@ -34,4 +34,4 @@ and stop coupling deployment lifecycle to `bin/upright-linode-setup.py`.
 - Current flow defaults to Ubuntu 24.04 (`linode/ubuntu24.04`).
 - DNS supports `linode-dns` and `manual` modes.
 - Destroy playbook removes monitor nodes created by this flow.
-- For Linode Interfaces compatibility, monitor node provisioning defaults to no `private_ip` request.
+- For Linode Interfaces compatibility, provisioning defaults to explicit `interfaces: [{purpose: public, primary: true}]` and no `private_ip` request.

@@ -44,5 +44,6 @@ Rails app scaffolding and Kamal deploy are intentionally left as a follow-up ope
 
 ## Linode Interfaces Note
 
+Linode node creation now sends an explicit primary public interface by default (`use_linode_interfaces: true`).
 `private_ip` is disabled by default (`enable_private_ipv4: false`) to support Linode Interfaces.
 If your account/regions support legacy private IP behavior, you can set `enable_private_ipv4: true`.

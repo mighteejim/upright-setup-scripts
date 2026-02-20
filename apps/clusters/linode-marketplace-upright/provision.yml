@@ -17,6 +17,7 @@
           - cluster_uuid | length > 0
           - dns_mode in ['linode-dns', 'manual']
           - (dns_ttl_sec | int) >= 30
+          - (use_linode_interfaces | default(true)) in [true, false]
           - (enable_private_ipv4 | default(false)) in [true, false]
         fail_msg: Missing required variable(s) in group_vars/linode/vars
 
@@ -46,6 +47,7 @@
         authorized_keys:
           - "{{ provisioner_ssh_pubkey }}"
           - "{{ deploy_ssh_pubkey }}"
+        interfaces: "{{ (use_linode_interfaces | default(true) | bool) | ternary([{'purpose': 'public', 'primary': true}], omit) }}"
         private_ip: "{{ (enable_private_ipv4 | default(false) | bool) | ternary(true, omit) }}"
         tags:
           - upright
