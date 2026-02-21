@@ -16,6 +16,11 @@ provisioner_ssh_pubkey: ""
 deploy_user: "deploy"
 deploy_ssh_pubkey: ""
 timezone: "UTC"
+kamal_ssh_port: 22
+registry_server: "ghcr.io"
+registry_username: "your-github-username"
+image_name: "ghcr.io/your-github-username/upright"
+kamal_builder_arch: "amd64"
 
 dns_mode: "manual"
 root_domain: ""
@@ -24,3 +29,8 @@ dns_ttl_sec: 120
 
 app_label: ""
 app_public_ipv4: ""
+
+upright_bootstrap_app: true
+upright_app_path: "/home/deploy/upright"
+upright_ruby_version: "3.4.2"
+upright_rails_version: "8.1.2"

@@ -24,6 +24,15 @@
   roles:
     - common
 
+- name: Bootstrap Upright app on app node
+  hosts: app
+  gather_facts: false
+  become: true
+  vars_files:
+    - group_vars/linode/vars
+  roles:
+    - app_bootstrap
+
 - name: Write post-deploy operator notes
   hosts: app
   gather_facts: false

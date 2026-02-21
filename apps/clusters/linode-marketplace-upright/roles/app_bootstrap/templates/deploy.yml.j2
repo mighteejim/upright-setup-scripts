@@ -1,0 +1,101 @@
+service: upright
+image: {{ image_name }}
+
+servers:
+  web:
+    hosts:
+      - {{ app_public_ipv4 }}: [admin]
+      - {{ app_bootstrap_ord_public_ipv4 }}: [ord]
+      - {{ app_bootstrap_iad_public_ipv4 }}: [iad]
+      - {{ app_bootstrap_sea_public_ipv4 }}: [sea]
+  jobs:
+    hosts:
+      - {{ app_bootstrap_ord_public_ipv4 }}: [ord]
+      - {{ app_bootstrap_iad_public_ipv4 }}: [iad]
+      - {{ app_bootstrap_sea_public_ipv4 }}: [sea]
+    cmd: bin/jobs
+
+ssh:
+  user: {{ deploy_user }}
+  port: {{ kamal_ssh_port }}
+
+registry:
+  server: {{ registry_server }}
+  username:
+    - KAMAL_REGISTRY_USERNAME
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: {{ kamal_builder_arch }}
+
+proxy:
+  app_port: 3000
+  ssl: false
+  forward_headers: true
+  run:
+    http_port: 8080
+    https_port: 8443
+  hosts:
+    - {{ app_bootstrap_app_host }}
+    - {{ app_bootstrap_ord_host }}
+    - {{ app_bootstrap_iad_host }}
+    - {{ app_bootstrap_sea_host }}
+
+env:
+  clear:
+    UPRIGHT_HOSTNAME: {{ app_bootstrap_suffix_fqdn }}
+    PLAYWRIGHT_SERVER_URL: ws://upright-playwright:53333/playwright
+    PROMETHEUS_URL: http://upright-prometheus:9090
+    ALERTMANAGER_URL: http://upright-alertmanager:9093
+  secret:
+    - RAILS_MASTER_KEY
+    - ADMIN_PASSWORD
+  tags:
+    admin:
+      SITE_SUBDOMAIN: app
+    ord:
+      SITE_SUBDOMAIN: ord
+    iad:
+      SITE_SUBDOMAIN: iad
+    sea:
+      SITE_SUBDOMAIN: sea
+
+volumes:
+  - "upright_storage:/rails/storage"
+
+accessories:
+  playwright:
+    image: jacoblincool/playwright:chromium-server-1.55.0
+    port: "127.0.0.1:53333:53333"
+    roles:
+      - jobs
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    host: {{ app_bootstrap_app_host }}
+    cmd: >-
+      --config.file=/etc/prometheus/prometheus.yml
+      --storage.tsdb.path=/prometheus
+      --storage.tsdb.retention.time=30d
+      --web.enable-otlp-receiver
+    files:
+      - config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - config/prometheus/rules/upright.rules.yml:/etc/prometheus/rules/upright.rules.yml
+    volumes:
+      - prometheus_data:/prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    host: {{ app_bootstrap_app_host }}
+    cmd: --config.file=/etc/alertmanager/alertmanager.yml
+    files:
+      - config/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    volumes:
+      - alertmanager_data:/alertmanager
+
+aliases:
+  console: app exec -i "bin/rails console"
+  logs: app logs -f
+
+retain_containers: 3

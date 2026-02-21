@@ -5,12 +5,15 @@ This directory implements a Linode Marketplace-style cluster flow for Upright:
 1. StackScript runs on the first node (app/provisioner).
 2. `provision.yml` creates monitor nodes (`ord`, `iad`, `sea`) via Linode API.
 3. `site.yml` configures all nodes (packages, docker, deploy user, SSH hardening).
-4. `destroy.yml` removes monitor nodes and DNS records created by the playbook.
+4. `site.yml` bootstraps the Upright Rails app on app node by default (`/home/deploy/upright`).
+5. `destroy.yml` removes monitor nodes and DNS records created by the playbook.
 
 ## Files
 
 - `provision.yml`: create monitor Linodes, wait for SSH, write inventory, optional Linode DNS.
 - `site.yml`: configure app + monitor nodes.
+- `roles/app_bootstrap`: installs rbenv + Ruby, scaffolds Rails app, installs Upright gem, runs DB setup.
+- `roles/app_bootstrap/templates`: renders `config/deploy.yml`, `config/sites.yml`, `.kamal/secrets` using live cluster IP/domain metadata.
 - `destroy.yml`: teardown of provisioned monitor resources.
 - `group_vars/linode/vars`: runtime variables populated by StackScript.
 - `roles/common`: baseline host setup.
@@ -36,11 +39,14 @@ On app/provisioner node:
 - `/root/.upright-cluster-info`
 - `/home/<deploy_user>/bin/setup-pass-secrets`
 - `/home/<deploy_user>/bin/load-secrets`
+- `/home/<deploy_user>/upright/config/deploy.yml`
+- `/home/<deploy_user>/upright/config/sites.yml`
+- `/home/<deploy_user>/upright/.kamal/secrets`
 
 ## Scope
 
-This flow handles infrastructure + baseline host configuration.
-Rails app scaffolding and Kamal deploy are intentionally left as a follow-up operator step.
+This flow handles infrastructure + baseline host configuration + app scaffolding.
+Kamal deploy remains an operator step after secrets are loaded.
 
 ## Linode Interfaces Note
 

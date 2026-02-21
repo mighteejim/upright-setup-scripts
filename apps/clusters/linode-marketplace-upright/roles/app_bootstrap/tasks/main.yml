@@ -1,0 +1,185 @@
+---
+- name: Bootstrap Upright Rails app
+  when: upright_bootstrap_app | default(true) | bool
+  block:
+    - name: Validate app bootstrap inputs
+      ansible.builtin.assert:
+        that:
+          - upright_app_path | default('') | length > 0
+          - upright_ruby_version | default('') | length > 0
+          - upright_rails_version | default('') | length > 0
+          - app_public_ipv4 | default('') | length > 0
+          - monitor_nodes is defined
+          - (monitor_nodes | length) >= 3
+          - image_name | default('') | length > 0
+          - registry_server | default('') | length > 0
+          - registry_username | default('') | length > 0
+        fail_msg: Missing required app bootstrap variable(s)
+
+    - name: Install app bootstrap packages
+      ansible.builtin.apt:
+        name:
+          - autoconf
+          - bison
+          - build-essential
+          - libdb-dev
+          - libffi-dev
+          - libgdbm-dev
+          - libncurses5-dev
+          - libreadline-dev
+          - libssl-dev
+          - libyaml-dev
+          - zlib1g-dev
+        state: present
+        lock_timeout: 600
+      register: app_bootstrap_apt_result
+      retries: 20
+      delay: 10
+      until: app_bootstrap_apt_result is succeeded
+
+    - name: Ensure app parent directory exists
+      ansible.builtin.file:
+        path: "{{ upright_app_path | dirname }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Install rbenv for deploy user
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.git:
+        repo: https://github.com/rbenv/rbenv.git
+        dest: "/home/{{ deploy_user }}/.rbenv"
+        update: true
+
+    - name: Install ruby-build plugin for rbenv
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.git:
+        repo: https://github.com/rbenv/ruby-build.git
+        dest: "/home/{{ deploy_user }}/.rbenv/plugins/ruby-build"
+        update: true
+
+    - name: Ensure rbenv env setup in deploy profile
+      ansible.builtin.blockinfile:
+        path: "/home/{{ deploy_user }}/.profile"
+        create: true
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+        marker: "# {mark} UPRIGHT_RBENV"
+        block: |
+          export RBENV_ROOT="$HOME/.rbenv"
+          export PATH="$RBENV_ROOT/bin:$PATH"
+          eval "$(rbenv init - bash)"
+
+    - name: Install and activate Ruby via rbenv
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        export RBENV_ROOT="$HOME/.rbenv"
+        export PATH="$RBENV_ROOT/bin:$PATH"
+        eval "$(rbenv init - bash)"
+        rbenv install -s "{{ upright_ruby_version }}"
+        rbenv global "{{ upright_ruby_version }}"
+        rbenv rehash
+      args:
+        executable: /bin/bash
+
+    - name: Install Bundler and Rails gems for bootstrap Ruby
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        export RBENV_ROOT="$HOME/.rbenv"
+        export PATH="$RBENV_ROOT/bin:$PATH"
+        eval "$(rbenv init - bash)"
+        rbenv shell "{{ upright_ruby_version }}"
+        if ! gem list -i bundler >/dev/null; then
+          gem install --no-document bundler
+        fi
+        if ! gem list -i rails -v "{{ upright_rails_version }}" >/dev/null; then
+          gem install --no-document rails -v "{{ upright_rails_version }}"
+        fi
+        rbenv rehash
+      args:
+        executable: /bin/bash
+
+    - name: Scaffold Rails app when missing
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        export RBENV_ROOT="$HOME/.rbenv"
+        export PATH="$RBENV_ROOT/bin:$PATH"
+        eval "$(rbenv init - bash)"
+        rbenv shell "{{ upright_ruby_version }}"
+        if [[ ! -f "{{ upright_app_path }}/Gemfile" ]]; then
+          rails _{{ upright_rails_version }}_ new "{{ upright_app_path }}" --database=sqlite3 --skip-test
+        fi
+      args:
+        executable: /bin/bash
+
+    - name: Install Upright gem and initialize app
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        export RBENV_ROOT="$HOME/.rbenv"
+        export PATH="$RBENV_ROOT/bin:$PATH"
+        eval "$(rbenv init - bash)"
+        rbenv shell "{{ upright_ruby_version }}"
+        cd "{{ upright_app_path }}"
+        if ! grep -Eq '^[[:space:]]*gem[[:space:]]+["'"'"']upright["'"'"']' Gemfile; then
+          bundle add upright
+        fi
+        bundle install
+        if [[ ! -f config/initializers/upright.rb ]]; then
+          bin/rails generate upright:install --force
+        fi
+        bin/rails db:prepare
+        bin/rails db:migrate
+      args:
+        executable: /bin/bash
+
+    - name: Resolve monitor public IPv4 addresses for config templates
+      ansible.builtin.set_fact:
+        app_bootstrap_ord_public_ipv4: "{{ (monitor_nodes | selectattr('code', 'equalto', 'ord') | first).ipv4_public }}"
+        app_bootstrap_iad_public_ipv4: "{{ (monitor_nodes | selectattr('code', 'equalto', 'iad') | first).ipv4_public }}"
+        app_bootstrap_sea_public_ipv4: "{{ (monitor_nodes | selectattr('code', 'equalto', 'sea') | first).ipv4_public }}"
+
+    - name: Build fqdn + host facts for Kamal/Upright config
+      ansible.builtin.set_fact:
+        app_bootstrap_suffix_fqdn: "{{ ((root_domain | default('') | trim | length) > 0) | ternary(upright_suffix_label ~ '.' ~ root_domain, upright_suffix_label) }}"
+        app_bootstrap_app_host: "{{ ((root_domain | default('') | trim | length) > 0) | ternary('app.' ~ upright_suffix_label ~ '.' ~ root_domain, app_public_ipv4) }}"
+        app_bootstrap_ord_host: "{{ ((root_domain | default('') | trim | length) > 0) | ternary('ord.' ~ upright_suffix_label ~ '.' ~ root_domain, app_bootstrap_ord_public_ipv4) }}"
+        app_bootstrap_iad_host: "{{ ((root_domain | default('') | trim | length) > 0) | ternary('iad.' ~ upright_suffix_label ~ '.' ~ root_domain, app_bootstrap_iad_public_ipv4) }}"
+        app_bootstrap_sea_host: "{{ ((root_domain | default('') | trim | length) > 0) | ternary('sea.' ~ upright_suffix_label ~ '.' ~ root_domain, app_bootstrap_sea_public_ipv4) }}"
+
+    - name: Ensure .kamal directory exists
+      ansible.builtin.file:
+        path: "{{ upright_app_path }}/.kamal"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Write Kamal deploy config from cluster metadata
+      ansible.builtin.template:
+        src: deploy.yml.j2
+        dest: "{{ upright_app_path }}/config/deploy.yml"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+
+    - name: Write Upright sites config
+      ansible.builtin.template:
+        src: sites.yml.j2
+        dest: "{{ upright_app_path }}/config/sites.yml"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+
+    - name: Write Kamal secrets template
+      ansible.builtin.template:
+        src: kamal-secrets.j2
+        dest: "{{ upright_app_path }}/.kamal/secrets"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"

@@ -9,6 +9,10 @@
       Upright cluster bootstrap complete.
 
       Deploy user: {{ deploy_user }}
+      Upright app path: {{ upright_app_path }}
+      App bootstrap: {{ (upright_bootstrap_app | default(true) | bool) | ternary('enabled', 'disabled') }}
+      Image: {{ image_name }}
+      Registry: {{ registry_server }} ({{ registry_username }})
       Root domain: {{ root_domain }}
       Suffix label: {{ upright_suffix_label }}
 
@@ -32,10 +36,21 @@
 
       Next steps (run from your workstation):
       1) SSH to app node as {{ deploy_user }}
-      2) Clone/create your Upright Rails app repo
+      {% if upright_bootstrap_app | default(true) | bool %}
+      2) Verify app scaffold at {{ upright_app_path }}
+      3) Verify generated config files:
+         - {{ upright_app_path }}/config/deploy.yml
+         - {{ upright_app_path }}/config/sites.yml
+         - {{ upright_app_path }}/.kamal/secrets
+      4) Run ~/bin/setup-pass-secrets on app node
+      5) Add/load deploy secrets via ~/bin/load-secrets
+      6) Run cd {{ upright_app_path }} && bin/kamal setup && bin/kamal deploy
+      {% else %}
+      2) Clone/create your Upright Rails app repo at {{ upright_app_path }}
       3) Run ~/bin/setup-pass-secrets on app node
       4) Add/load deploy secrets via ~/bin/load-secrets
-      5) Run bin/kamal setup && bin/kamal deploy
+      5) Run cd {{ upright_app_path }} && bin/kamal setup && bin/kamal deploy
+      {% endif %}
 
 - name: Ensure deploy user bin directory
   ansible.builtin.file:
