@@ -62,6 +62,7 @@ GIT_BRANCH="${GIT_BRANCH:-main}"
 WORK_DIR="/tmp/upright-marketplace"
 APP_DIR="${WORK_DIR}/apps/clusters/linode-marketplace-upright"
 ANSIBLE_KEY_PATH="${HOME}/.ssh/id_ansible_ed25519"
+ANSIBLE_LOG_PATH="${ANSIBLE_LOG_PATH:-/var/log/ansible-upright.log}"
 
 if [[ -z "${TOKEN_PASSWORD}" ]]; then
   echo "TOKEN_PASSWORD is required" >&2
@@ -153,6 +154,8 @@ DEPLOY_STAGE="bootstrap"
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 export APT_LISTCHANGES_FRONTEND=none
+touch "${ANSIBLE_LOG_PATH}" && chmod 0644 "${ANSIBLE_LOG_PATH}"
+export ANSIBLE_LOG_PATH
 echo "[stage] install bootstrap dependencies"
 run_retry 10 8 apt-get update && apt-get upgrade -y
 run_retry 10 8 apt-get install -y git jq curl python3 python3-venv python3-pip ca-certificates
@@ -248,5 +251,6 @@ DEPLOY_STAGE="complete"
 
 echo "Upright cluster playbooks finished"
 echo "- stackscript log: /var/log/stackscript.log"
+echo "- ansible log: ${ANSIBLE_LOG_PATH}"
 echo "- credentials: /home/${DEPLOY_USER}/.credentials"
 echo "- cluster summary: /root/.upright-cluster-info"
