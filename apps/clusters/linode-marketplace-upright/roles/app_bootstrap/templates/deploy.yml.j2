@@ -1,5 +1,5 @@
 service: upright
-image: {{ image_name }}
+image: {{ image_name | default('ghcr.io/your-github-username/upright', true) }}
 
 servers:
   web:
@@ -17,17 +17,17 @@ servers:
 
 ssh:
   user: {{ deploy_user }}
-  port: {{ kamal_ssh_port }}
+  port: {{ kamal_ssh_port | default(22, true) }}
 
 registry:
-  server: {{ registry_server }}
+  server: {{ registry_server | default('ghcr.io', true) }}
   username:
     - KAMAL_REGISTRY_USERNAME
   password:
     - KAMAL_REGISTRY_PASSWORD
 
 builder:
-  arch: {{ kamal_builder_arch }}
+  arch: {{ kamal_builder_arch | default('amd64', true) }}
 
 proxy:
   app_port: 3000

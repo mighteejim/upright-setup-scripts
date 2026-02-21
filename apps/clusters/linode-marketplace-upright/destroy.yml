@@ -27,35 +27,98 @@
           - "{{ cluster_name }}-sea-{{ cluster_uuid }}"
       when: destroy_labels is not defined
 
-    - name: Delete monitor nodes by label
-      linode.cloud.instance:
-        label: "{{ item }}"
-        api_token: "{{ token_password }}"
-        state: absent
+    - name: Show monitor nodes planned for deletion
+      ansible.builtin.debug:
+        msg: "Deleting monitor node label={{ item }}"
       loop: "{{ destroy_labels }}"
       loop_control:
         label: "{{ item }}"
-      register: destroy_nodes
-      retries: 6
-      delay: 8
-      until: destroy_nodes is succeeded
+
+    - name: Delete monitor nodes by label
+      block:
+        - name: Delete monitor nodes by label (API)
+          linode.cloud.instance:
+            label: "{{ item }}"
+            api_token: "{{ token_password }}"
+            state: absent
+          loop: "{{ destroy_labels }}"
+          loop_control:
+            label: "{{ item }}"
+          register: destroy_nodes
+          retries: 6
+          delay: 8
+          until: destroy_nodes is succeeded
+          no_log: false
+
+        - name: Show monitor deletion results
+          ansible.builtin.debug:
+            msg: >-
+              delete monitor label={{ item.item | default('unknown') }}
+              changed={{ item.changed | default(false) }}
+              failed={{ item.failed | default(false) }}
+              msg={{ item.msg | default('ok') }}
+          loop: "{{ destroy_nodes.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item | default('unknown') }}"
+      rescue:
+        - name: Show monitor deletion failure details
+          ansible.builtin.debug:
+            var: ansible_failed_result
+
+        - name: Fail monitor deletion with explicit context
+          ansible.builtin.fail:
+            msg: "Monitor deletion failed; see ansible_failed_result above."
+
+    - name: Show DNS records planned for deletion
+      when:
+        - dns_mode == 'linode-dns'
+        - root_domain | length > 0
+        - desired_dns_records is defined
+      ansible.builtin.debug:
+        msg: "Deleting DNS A {{ item.name }}.{{ root_domain }} -> {{ item.target }}"
+      loop: "{{ desired_dns_records }}"
+      loop_control:
+        label: "{{ item.name }}"
 
     - name: Delete Linode DNS A records
       when:
         - dns_mode == 'linode-dns'
         - root_domain | length > 0
         - desired_dns_records is defined
-      linode.cloud.domain_record:
-        api_token: "{{ token_password }}"
-        domain: "{{ root_domain }}"
-        name: "{{ item.name }}"
-        type: A
-        target: "{{ item.target }}"
-        state: absent
-      loop: "{{ desired_dns_records }}"
-      loop_control:
-        label: "{{ item.name }}"
-      register: destroy_dns
-      retries: 6
-      delay: 8
-      until: destroy_dns is succeeded
+      block:
+        - name: Delete Linode DNS A records (API)
+          linode.cloud.domain_record:
+            api_token: "{{ token_password }}"
+            domain: "{{ root_domain }}"
+            name: "{{ item.name }}"
+            type: A
+            target: "{{ item.target }}"
+            state: absent
+          loop: "{{ desired_dns_records }}"
+          loop_control:
+            label: "{{ item.name }}"
+          register: destroy_dns
+          retries: 6
+          delay: 8
+          until: destroy_dns is succeeded
+          no_log: false
+
+        - name: Show DNS deletion results
+          ansible.builtin.debug:
+            msg: >-
+              delete dns name={{ item.item.name | default('unknown') }}
+              target={{ item.item.target | default('unknown') }}
+              changed={{ item.changed | default(false) }}
+              failed={{ item.failed | default(false) }}
+              msg={{ item.msg | default('ok') }}
+          loop: "{{ destroy_dns.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.name | default('unknown') }}"
+      rescue:
+        - name: Show DNS deletion failure details
+          ansible.builtin.debug:
+            var: ansible_failed_result
+
+        - name: Fail DNS deletion with explicit context
+          ansible.builtin.fail:
+            msg: "DNS deletion failed; see ansible_failed_result above."

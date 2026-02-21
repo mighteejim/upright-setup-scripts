@@ -24,6 +24,7 @@ set -euo pipefail
 # <UDF name="REGISTRY_USERNAME" label="Container registry username" default="your-github-username" />
 # <UDF name="IMAGE_NAME" label="Container image name" default="ghcr.io/your-github-username/upright" />
 # <UDF name="KAMAL_BUILDER_ARCH" label="Kamal build arch" default="amd64" />
+# <UDF name="AUTO_DESTROY_ON_FAILURE" label="Auto-destroy monitor nodes if provision fails" oneOf="true,false" default="true" />
 # <UDF name="UPRIGHT_BOOTSTRAP_APP" label="Bootstrap Upright app on app node" oneOf="true,false" default="true" />
 # <UDF name="UPRIGHT_APP_PATH" label="Upright app path on app node" default="/home/deploy/upright" />
 # <UDF name="UPRIGHT_RUBY_VERSION" label="Ruby version for app bootstrap" default="3.4.2" />
@@ -50,6 +51,7 @@ REGISTRY_SERVER="${REGISTRY_SERVER:-ghcr.io}"
 REGISTRY_USERNAME="${REGISTRY_USERNAME:-your-github-username}"
 IMAGE_NAME="${IMAGE_NAME:-ghcr.io/your-github-username/upright}"
 KAMAL_BUILDER_ARCH="${KAMAL_BUILDER_ARCH:-amd64}"
+AUTO_DESTROY_ON_FAILURE="${AUTO_DESTROY_ON_FAILURE:-true}"
 UPRIGHT_BOOTSTRAP_APP="${UPRIGHT_BOOTSTRAP_APP:-true}"
 UPRIGHT_APP_PATH="${UPRIGHT_APP_PATH:-/home/deploy/upright}"
 UPRIGHT_RUBY_VERSION="${UPRIGHT_RUBY_VERSION:-3.4.2}"
@@ -85,6 +87,10 @@ if [[ "${UPRIGHT_BOOTSTRAP_APP}" != "true" && "${UPRIGHT_BOOTSTRAP_APP}" != "fal
   echo "UPRIGHT_BOOTSTRAP_APP must be true or false" >&2
   exit 1
 fi
+if [[ "${AUTO_DESTROY_ON_FAILURE}" != "true" && "${AUTO_DESTROY_ON_FAILURE}" != "false" ]]; then
+  echo "AUTO_DESTROY_ON_FAILURE must be true or false" >&2
+  exit 1
+fi
 if ! [[ "${KAMAL_SSH_PORT}" =~ ^[0-9]+$ ]]; then
   echo "KAMAL_SSH_PORT must be numeric" >&2
   exit 1
@@ -116,13 +122,18 @@ cleanup() {
   local status="$1"
   local line="$2"
   if [[ "$status" -ne 0 ]]; then
-    echo "Deployment failed at line ${line}; attempting destroy playbook"
-    if [[ -f "${APP_DIR}/destroy.yml" ]]; then
-      (
-        cd "${APP_DIR}"
-        source env/bin/activate || true
-        ansible-playbook -v destroy.yml || true
-      )
+    echo "Deployment failed at line ${line}; stage=${DEPLOY_STAGE}"
+    if [[ "${AUTO_DESTROY_ON_FAILURE}" == "true" && "${DEPLOY_STAGE}" == "provision" ]]; then
+      echo "Auto-destroy enabled for provision-stage failure; attempting destroy playbook"
+      if [[ -f "${APP_DIR}/destroy.yml" ]]; then
+        (
+          cd "${APP_DIR}"
+          source env/bin/activate || true
+          ansible-playbook -v destroy.yml || true
+        )
+      fi
+    else
+      echo "Skipping auto-destroy (AUTO_DESTROY_ON_FAILURE=${AUTO_DESTROY_ON_FAILURE}, stage=${DEPLOY_STAGE})"
     fi
   fi
 
@@ -137,6 +148,7 @@ cleanup() {
   fi
 }
 trap 'cleanup $? $LINENO' EXIT
+DEPLOY_STAGE="bootstrap"
 
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
@@ -227,9 +239,12 @@ CFG
 
 cd "${APP_DIR}"
 echo "[stage] run provision playbook"
+DEPLOY_STAGE="provision"
 run_retry 3 10 ansible-playbook -v provision.yml
 echo "[stage] run site playbook"
+DEPLOY_STAGE="site"
 run_retry 3 10 ansible-playbook -v -i hosts site.yml
+DEPLOY_STAGE="complete"
 
 echo "Upright cluster playbooks finished"
 echo "- stackscript log: /var/log/stackscript.log"

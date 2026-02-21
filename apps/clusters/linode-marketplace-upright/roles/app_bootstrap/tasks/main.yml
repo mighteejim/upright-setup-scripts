@@ -5,15 +5,15 @@
     - name: Validate app bootstrap inputs
       ansible.builtin.assert:
         that:
-          - upright_app_path | default('') | length > 0
-          - upright_ruby_version | default('') | length > 0
-          - upright_rails_version | default('') | length > 0
+          - (upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true)) | length > 0
+          - (upright_ruby_version | default('3.4.2', true)) | length > 0
+          - (upright_rails_version | default('8.1.2', true)) | length > 0
           - app_public_ipv4 | default('') | length > 0
           - monitor_nodes is defined
           - (monitor_nodes | length) >= 3
-          - image_name | default('') | length > 0
-          - registry_server | default('') | length > 0
-          - registry_username | default('') | length > 0
+          - (image_name | default('ghcr.io/your-github-username/upright', true)) | length > 0
+          - (registry_server | default('ghcr.io', true)) | length > 0
+          - (registry_username | default('your-github-username', true)) | length > 0
         fail_msg: Missing required app bootstrap variable(s)
 
     - name: Install app bootstrap packages
@@ -39,7 +39,7 @@
 
     - name: Ensure app parent directory exists
       ansible.builtin.file:
-        path: "{{ upright_app_path | dirname }}"
+        path: "{{ (upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true)) | dirname }}"
         state: directory
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
@@ -79,8 +79,8 @@
         export RBENV_ROOT="$HOME/.rbenv"
         export PATH="$RBENV_ROOT/bin:$PATH"
         eval "$(rbenv init - bash)"
-        rbenv install -s "{{ upright_ruby_version }}"
-        rbenv global "{{ upright_ruby_version }}"
+        rbenv install -s "{{ upright_ruby_version | default('3.4.2', true) }}"
+        rbenv global "{{ upright_ruby_version | default('3.4.2', true) }}"
         rbenv rehash
       args:
         executable: /bin/bash
@@ -92,12 +92,12 @@
         export RBENV_ROOT="$HOME/.rbenv"
         export PATH="$RBENV_ROOT/bin:$PATH"
         eval "$(rbenv init - bash)"
-        rbenv shell "{{ upright_ruby_version }}"
+        rbenv shell "{{ upright_ruby_version | default('3.4.2', true) }}"
         if ! gem list -i bundler >/dev/null; then
           gem install --no-document bundler
         fi
-        if ! gem list -i rails -v "{{ upright_rails_version }}" >/dev/null; then
-          gem install --no-document rails -v "{{ upright_rails_version }}"
+        if ! gem list -i rails -v "{{ upright_rails_version | default('8.1.2', true) }}" >/dev/null; then
+          gem install --no-document rails -v "{{ upright_rails_version | default('8.1.2', true) }}"
         fi
         rbenv rehash
       args:
@@ -110,9 +110,9 @@
         export RBENV_ROOT="$HOME/.rbenv"
         export PATH="$RBENV_ROOT/bin:$PATH"
         eval "$(rbenv init - bash)"
-        rbenv shell "{{ upright_ruby_version }}"
-        if [[ ! -f "{{ upright_app_path }}/Gemfile" ]]; then
-          rails _{{ upright_rails_version }}_ new "{{ upright_app_path }}" --database=sqlite3 --skip-test
+        rbenv shell "{{ upright_ruby_version | default('3.4.2', true) }}"
+        if [[ ! -f "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/Gemfile" ]]; then
+          rails _{{ upright_rails_version | default('8.1.2', true) }}_ new "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}" --database=sqlite3 --skip-test
         fi
       args:
         executable: /bin/bash
@@ -124,8 +124,8 @@
         export RBENV_ROOT="$HOME/.rbenv"
         export PATH="$RBENV_ROOT/bin:$PATH"
         eval "$(rbenv init - bash)"
-        rbenv shell "{{ upright_ruby_version }}"
-        cd "{{ upright_app_path }}"
+        rbenv shell "{{ upright_ruby_version | default('3.4.2', true) }}"
+        cd "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}"
         if ! grep -Eq '^[[:space:]]*gem[[:space:]]+["'"'"']upright["'"'"']' Gemfile; then
           bundle add upright
         fi
@@ -154,7 +154,7 @@
 
     - name: Ensure .kamal directory exists
       ansible.builtin.file:
-        path: "{{ upright_app_path }}/.kamal"
+        path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/.kamal"
         state: directory
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
@@ -163,7 +163,7 @@
     - name: Write Kamal deploy config from cluster metadata
       ansible.builtin.template:
         src: deploy.yml.j2
-        dest: "{{ upright_app_path }}/config/deploy.yml"
+        dest: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/deploy.yml"
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
         mode: "0644"
@@ -171,7 +171,7 @@
     - name: Write Upright sites config
       ansible.builtin.template:
         src: sites.yml.j2
-        dest: "{{ upright_app_path }}/config/sites.yml"
+        dest: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/sites.yml"
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
         mode: "0644"
@@ -179,7 +179,7 @@
     - name: Write Kamal secrets template
       ansible.builtin.template:
         src: kamal-secrets.j2
-        dest: "{{ upright_app_path }}/.kamal/secrets"
+        dest: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/.kamal/secrets"
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
         mode: "0644"
