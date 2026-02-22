@@ -147,6 +147,13 @@
         replace: '\1+='
       failed_when: false
 
+    - name: Keep generated Upright host rules additive (Rails.application form)
+      ansible.builtin.replace:
+        path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/initializers/upright.rb"
+        regexp: '(Rails\.application\.config\.hosts\s*)='
+        replace: '\1+='
+      failed_when: false
+
     - name: Resolve monitor public IPv4 addresses for config templates
       ansible.builtin.set_fact:
         app_bootstrap_ord_public_ipv4: "{{ (monitor_nodes | selectattr('code', 'equalto', 'ord') | first).ipv4_public }}"
@@ -180,6 +187,17 @@
           config.hosts << "{{ app_bootstrap_ord_public_ipv4 }}"
           config.hosts << "{{ app_bootstrap_iad_public_ipv4 }}"
           config.hosts << "{{ app_bootstrap_sea_public_ipv4 }}"
+
+    - name: Add late initializer for Kamal host-authorization health checks
+      ansible.builtin.copy:
+        dest: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/initializers/zzzz_kamal_host_authorization.rb"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+        content: |
+          # Kamal health checks use container-id host headers.
+          Rails.application.config.hosts << /\A[0-9a-f]{12}(?::\d+)?\z/
+          Rails.application.config.hosts << /\A[0-9a-f]{64}(?::\d+)?\z/
 
     - name: Ensure .kamal directory exists
       ansible.builtin.file:
