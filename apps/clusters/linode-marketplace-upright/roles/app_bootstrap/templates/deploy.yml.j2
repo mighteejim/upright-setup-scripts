@@ -34,8 +34,8 @@ proxy:
   ssl: false
   forward_headers: true
   run:
-    http_port: 8080
-    https_port: 8443
+    http_port: 80
+    https_port: 443
   hosts:
     - {{ app_bootstrap_app_host }}
     - {{ app_bootstrap_ord_host }}
