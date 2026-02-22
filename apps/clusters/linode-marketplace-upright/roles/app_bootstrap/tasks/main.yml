@@ -178,6 +178,20 @@
           end
       failed_when: false
 
+    - name: Configure session cookie security from env
+      ansible.builtin.copy:
+        dest: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/initializers/session_store.rb"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+        content: |
+          Rails.application.config.session_store :cookie_store,
+            key: "_upright_session",
+            domain: :all,
+            same_site: :lax,
+            secure: ENV.fetch("UPRIGHT_SESSION_SECURE", Rails.env.production? ? "true" : "false") == "true",
+            expire_after: 24.hours
+
     - name: Configure Upright tld_length from hostname depth
       ansible.builtin.blockinfile:
         path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/initializers/upright.rb"

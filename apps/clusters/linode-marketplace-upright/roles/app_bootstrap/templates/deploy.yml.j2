@@ -46,6 +46,7 @@ env:
   clear:
     UPRIGHT_HOSTNAME: {{ app_bootstrap_suffix_fqdn }}
     UPRIGHT_URL_PROTOCOL: http
+    UPRIGHT_SESSION_SECURE: "false"
     PLAYWRIGHT_SERVER_URL: ws://upright-playwright:53333/playwright
     PROMETHEUS_URL: http://upright-prometheus:9090
     ALERTMANAGER_URL: http://upright-alertmanager:9093
