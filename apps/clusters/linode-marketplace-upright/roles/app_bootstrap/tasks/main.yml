@@ -161,6 +161,23 @@
         replace: '  config.hostname     = Rails.env.local? ? "upright.localhost" : ENV.fetch("UPRIGHT_HOSTNAME", "upright.com")'
       failed_when: false
 
+    - name: Configure Upright URL options protocol from env
+      ansible.builtin.blockinfile:
+        path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/initializers/upright.rb"
+        marker: "  # {mark} UPRIGHT_URL_OPTIONS"
+        insertafter: '^\s*config\.hostname\s*=.*$'
+        block: |
+          # Keep redirect URL protocol aligned with deployment mode.
+          config.singleton_class.class_eval do
+            define_method(:default_url_options) do
+              protocol = ENV.fetch("UPRIGHT_URL_PROTOCOL", Rails.env.production? ? "https" : "http")
+              options = { protocol: protocol, host: "#{global_subdomain}.#{hostname}", domain: hostname }
+              options[:port] = ENV.fetch("PORT", 3000).to_i unless Rails.env.production?
+              options
+            end
+          end
+      failed_when: false
+
     - name: Configure Upright tld_length from hostname depth
       ansible.builtin.blockinfile:
         path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/initializers/upright.rb"
