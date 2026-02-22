@@ -17,11 +17,9 @@ deploy_user: "deploy"
 deploy_ssh_pubkey: ""
 timezone: "UTC"
 kamal_ssh_port: 22
-github_username: ""
 registry_server: "ghcr.io"
 registry_username: ""
 image_name: ""
-kamal_builder_arch: "amd64"
 
 dns_mode: "manual"
 root_domain: ""

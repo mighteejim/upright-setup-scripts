@@ -20,14 +20,14 @@ ssh:
   port: {{ kamal_ssh_port | default(22, true) }}
 
 registry:
-  server: {{ registry_server | default('ghcr.io', true) }}
+  server: ghcr.io
   username:
     - KAMAL_REGISTRY_USERNAME
   password:
     - KAMAL_REGISTRY_PASSWORD
 
 builder:
-  arch: {{ kamal_builder_arch | default('amd64', true) }}
+  arch: amd64
 
 proxy:
   app_port: 3000

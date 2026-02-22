@@ -20,16 +20,7 @@ set -euo pipefail
 # <UDF name="CLUSTER_NAME" label="Cluster name prefix" default="upright" />
 # <UDF name="TIMEZONE" label="Timezone" default="UTC" />
 # <UDF name="KAMAL_SSH_PORT" label="Kamal SSH port" default="22" />
-# <UDF name="GITHUB_USERNAME" label="GitHub username for GHCR image" default="" />
-# <UDF name="REGISTRY_SERVER" label="Container registry server" default="ghcr.io" />
-# <UDF name="REGISTRY_USERNAME" label="Container registry username" default="your-github-username" />
-# <UDF name="IMAGE_NAME" label="Container image name" default="ghcr.io/your-github-username/upright" />
-# <UDF name="KAMAL_BUILDER_ARCH" label="Kamal build arch" default="amd64" />
-# <UDF name="AUTO_DESTROY_ON_FAILURE" label="Auto-destroy monitor nodes if provision fails" oneOf="true,false" default="true" />
-# <UDF name="UPRIGHT_BOOTSTRAP_APP" label="Bootstrap Upright app on app node" oneOf="true,false" default="true" />
-# <UDF name="UPRIGHT_APP_PATH" label="Upright app path on app node" default="/home/deploy/upright" />
-# <UDF name="UPRIGHT_RUBY_VERSION" label="Ruby version for app bootstrap" default="3.4.2" />
-# <UDF name="UPRIGHT_RAILS_VERSION" label="Rails version for app bootstrap" default="8.1.2" />
+# <UDF name="REGISTRY_USERNAME" label="Container registry username (GitHub username)" default="your-github-username" />
 # <UDF name="GIT_REPO" label="Git repo URL" default="" />
 # <UDF name="GIT_BRANCH" label="Git branch" default="main" />
 
@@ -48,16 +39,13 @@ SEA_REGION="${SEA_REGION:-us-sea}"
 CLUSTER_NAME="${CLUSTER_NAME:-upright}"
 TIMEZONE="${TIMEZONE:-UTC}"
 KAMAL_SSH_PORT="${KAMAL_SSH_PORT:-22}"
-GITHUB_USERNAME="${GITHUB_USERNAME:-}"
-REGISTRY_SERVER="${REGISTRY_SERVER:-ghcr.io}"
+REGISTRY_SERVER="ghcr.io"
 REGISTRY_USERNAME="${REGISTRY_USERNAME:-your-github-username}"
-IMAGE_NAME="${IMAGE_NAME:-ghcr.io/your-github-username/upright}"
-KAMAL_BUILDER_ARCH="${KAMAL_BUILDER_ARCH:-amd64}"
-AUTO_DESTROY_ON_FAILURE="${AUTO_DESTROY_ON_FAILURE:-true}"
-UPRIGHT_BOOTSTRAP_APP="${UPRIGHT_BOOTSTRAP_APP:-true}"
-UPRIGHT_APP_PATH="${UPRIGHT_APP_PATH:-/home/deploy/upright}"
-UPRIGHT_RUBY_VERSION="${UPRIGHT_RUBY_VERSION:-3.4.2}"
-UPRIGHT_RAILS_VERSION="${UPRIGHT_RAILS_VERSION:-8.1.2}"
+AUTO_DESTROY_ON_FAILURE="true"
+UPRIGHT_BOOTSTRAP_APP="true"
+UPRIGHT_APP_PATH="/home/deploy/upright"
+UPRIGHT_RUBY_VERSION="3.4.2"
+UPRIGHT_RAILS_VERSION="8.1.2"
 GIT_REPO="${GIT_REPO:-}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
 
@@ -78,39 +66,29 @@ if [[ -z "${DEPLOY_SSH_PUBKEY}" ]]; then
   echo "DEPLOY_SSH_PUBKEY is required" >&2
   exit 1
 fi
-if [[ -n "${GITHUB_USERNAME}" ]]; then
-  if [[ -z "${REGISTRY_USERNAME}" || "${REGISTRY_USERNAME}" == "your-github-username" ]]; then
-    REGISTRY_USERNAME="${GITHUB_USERNAME}"
-  fi
-  if [[ -z "${IMAGE_NAME}" || "${IMAGE_NAME}" == "ghcr.io/your-github-username/upright" ]]; then
-    IMAGE_NAME="ghcr.io/${REGISTRY_USERNAME}/upright"
-  fi
+# Normalize REGISTRY_USERNAME so accidental full-image input still works.
+if [[ "${REGISTRY_USERNAME}" == https://* ]]; then
+  REGISTRY_USERNAME="${REGISTRY_USERNAME#https://}"
+elif [[ "${REGISTRY_USERNAME}" == http://* ]]; then
+  REGISTRY_USERNAME="${REGISTRY_USERNAME#http://}"
 fi
-if [[ "${IMAGE_NAME}" == "ghcr.io/your-github-username/upright" && "${REGISTRY_USERNAME}" != "your-github-username" ]]; then
-  IMAGE_NAME="ghcr.io/${REGISTRY_USERNAME}/upright"
+if [[ "${REGISTRY_USERNAME}" == "${REGISTRY_SERVER}/"* ]]; then
+  REGISTRY_USERNAME="${REGISTRY_USERNAME#${REGISTRY_SERVER}/}"
+fi
+if [[ "${REGISTRY_USERNAME}" == */* ]]; then
+  REGISTRY_USERNAME="${REGISTRY_USERNAME%%/*}"
 fi
 if [[ -z "${REGISTRY_USERNAME}" || "${REGISTRY_USERNAME}" == "your-github-username" ]]; then
-  echo "REGISTRY_USERNAME is required (or set GITHUB_USERNAME)" >&2
+  echo "REGISTRY_USERNAME is required and cannot be placeholder 'your-github-username'" >&2
   exit 1
 fi
-if [[ -z "${IMAGE_NAME}" || "${IMAGE_NAME}" == *"your-github-username"* ]]; then
-  echo "IMAGE_NAME is required and cannot contain placeholder 'your-github-username'" >&2
-  exit 1
-fi
+IMAGE_NAME="${REGISTRY_USERNAME}/upright"
 if [[ "${DNS_MODE}" == "linode-dns" && -z "${ROOT_DOMAIN}" ]]; then
   echo "ROOT_DOMAIN is required when DNS_MODE=linode-dns" >&2
   exit 1
 fi
 if [[ "${DNS_MODE}" != "linode-dns" && "${DNS_MODE}" != "manual" ]]; then
   echo "DNS_MODE must be one of: linode-dns, manual" >&2
-  exit 1
-fi
-if [[ "${UPRIGHT_BOOTSTRAP_APP}" != "true" && "${UPRIGHT_BOOTSTRAP_APP}" != "false" ]]; then
-  echo "UPRIGHT_BOOTSTRAP_APP must be true or false" >&2
-  exit 1
-fi
-if [[ "${AUTO_DESTROY_ON_FAILURE}" != "true" && "${AUTO_DESTROY_ON_FAILURE}" != "false" ]]; then
-  echo "AUTO_DESTROY_ON_FAILURE must be true or false" >&2
   exit 1
 fi
 if ! [[ "${KAMAL_SSH_PORT}" =~ ^[0-9]+$ ]]; then
@@ -232,11 +210,9 @@ deploy_user: "${DEPLOY_USER}"
 deploy_ssh_pubkey: "${DEPLOY_SSH_PUBKEY}"
 timezone: "${TIMEZONE}"
 kamal_ssh_port: ${KAMAL_SSH_PORT}
-github_username: "${GITHUB_USERNAME}"
 registry_server: "${REGISTRY_SERVER}"
 registry_username: "${REGISTRY_USERNAME}"
 image_name: "${IMAGE_NAME}"
-kamal_builder_arch: "${KAMAL_BUILDER_ARCH}"
 
 dns_mode: "${DNS_MODE}"
 root_domain: "${ROOT_DOMAIN}"
