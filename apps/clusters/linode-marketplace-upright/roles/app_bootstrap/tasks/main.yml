@@ -161,6 +161,16 @@
         replace: '  config.hostname     = Rails.env.local? ? "upright.localhost" : ENV.fetch("UPRIGHT_HOSTNAME", "upright.com")'
       failed_when: false
 
+    - name: Configure Upright tld_length from hostname depth
+      ansible.builtin.blockinfile:
+        path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/initializers/upright.rb"
+        marker: "  # {mark} UPRIGHT_TLD_LENGTH"
+        insertafter: '^\s*config\.hostname\s*=.*$'
+        block: |
+          # Ensure subdomain parsing works for nested hostnames (e.g. app.up.example.com).
+          Rails.application.config.action_dispatch.tld_length = [ENV.fetch("UPRIGHT_HOSTNAME", "upright.com").split(".").length - 1, 1].max
+      failed_when: false
+
     - name: Resolve monitor public IPv4 addresses for config templates
       ansible.builtin.set_fact:
         app_bootstrap_ord_public_ipv4: "{{ (monitor_nodes | selectattr('code', 'equalto', 'ord') | first).ipv4_public }}"
