@@ -138,7 +138,7 @@
 
 - name: Resolve node FQDN
   ansible.builtin.set_fact:
-    common_node_fqdn: "{{ common_node_code }}.{{ upright_suffix_label }}.{{ root_domain }}"
+    common_node_fqdn: "node-{{ common_node_code }}.{{ upright_suffix_label }}.{{ root_domain }}"
   when: root_domain | length > 0
 
 - name: Configure hostname
