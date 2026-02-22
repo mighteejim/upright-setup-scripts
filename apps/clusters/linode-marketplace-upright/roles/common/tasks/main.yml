@@ -35,6 +35,60 @@
     enabled: true
     state: started
 
+- name: Check whether Docker buildx is available
+  ansible.builtin.command: docker buildx version
+  register: common_buildx_check
+  changed_when: false
+  failed_when: false
+
+- name: Ensure Docker buildx plugin is installed when missing
+  when: common_buildx_check.rc != 0
+  block:
+    - name: Attempt to install docker-buildx-plugin package
+      ansible.builtin.apt:
+        name: docker-buildx-plugin
+        state: present
+        lock_timeout: 600
+      register: common_buildx_pkg_result
+      failed_when: false
+
+    - name: Re-check Docker buildx after package install attempt
+      ansible.builtin.command: docker buildx version
+      register: common_buildx_post_pkg_check
+      changed_when: false
+      failed_when: false
+
+    - name: Resolve Docker buildx architecture
+      ansible.builtin.set_fact:
+        common_buildx_arch: >-
+          {{
+            {
+              'x86_64': 'amd64',
+              'amd64': 'amd64',
+              'aarch64': 'arm64',
+              'arm64': 'arm64'
+            }[ansible_architecture] | default('amd64')
+          }}
+      when: common_buildx_post_pkg_check.rc != 0
+
+    - name: Ensure Docker cli plugins directory exists
+      ansible.builtin.file:
+        path: /usr/local/lib/docker/cli-plugins
+        state: directory
+        mode: "0755"
+      when: common_buildx_post_pkg_check.rc != 0
+
+    - name: Install Docker buildx plugin binary fallback
+      ansible.builtin.get_url:
+        url: "https://github.com/docker/buildx/releases/download/v0.16.2/buildx-v0.16.2.linux-{{ common_buildx_arch }}"
+        dest: /usr/local/lib/docker/cli-plugins/docker-buildx
+        mode: "0755"
+      when: common_buildx_post_pkg_check.rc != 0
+
+    - name: Verify Docker buildx after fallback install
+      ansible.builtin.command: docker buildx version
+      changed_when: false
+
 - name: Read current timezone
   ansible.builtin.command: timedatectl show --property=Timezone --value
   register: common_tz_current
