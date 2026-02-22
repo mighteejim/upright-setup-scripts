@@ -1,0 +1,3 @@
+- name: {{ (http_probe_name | default('Main Website', true) | trim) | to_json }}
+  url: {{ (http_probe_url | trim) | to_json }}
+  expected_status: {{ http_probe_expected_status | default(200, true) | int }}

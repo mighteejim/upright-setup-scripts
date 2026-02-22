@@ -20,6 +20,9 @@ kamal_ssh_port: 22
 registry_server: "ghcr.io"
 registry_username: ""
 image_name: ""
+http_probe_name: "Main Website"
+http_probe_url: ""
+http_probe_expected_status: 200
 
 dns_mode: "manual"
 root_domain: ""

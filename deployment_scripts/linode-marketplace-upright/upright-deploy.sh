@@ -21,6 +21,9 @@ set -euo pipefail
 # <UDF name="TIMEZONE" label="Timezone" default="UTC" />
 # <UDF name="KAMAL_SSH_PORT" label="Kamal SSH port" default="22" />
 # <UDF name="REGISTRY_USERNAME" label="Container registry username (GitHub username)" default="your-github-username" />
+# <UDF name="HTTP_PROBE_NAME" label="HTTP probe name" default="Main Website" />
+# <UDF name="HTTP_PROBE_URL" label="HTTP probe URL (optional)" default="" />
+# <UDF name="HTTP_PROBE_EXPECTED_STATUS" label="HTTP probe expected status" default="200" />
 # <UDF name="GIT_REPO" label="Git repo URL" default="" />
 # <UDF name="GIT_BRANCH" label="Git branch" default="main" />
 
@@ -41,6 +44,9 @@ TIMEZONE="${TIMEZONE:-UTC}"
 KAMAL_SSH_PORT="${KAMAL_SSH_PORT:-22}"
 REGISTRY_SERVER="ghcr.io"
 REGISTRY_USERNAME="${REGISTRY_USERNAME:-your-github-username}"
+HTTP_PROBE_NAME="${HTTP_PROBE_NAME:-Main Website}"
+HTTP_PROBE_URL="${HTTP_PROBE_URL:-}"
+HTTP_PROBE_EXPECTED_STATUS="${HTTP_PROBE_EXPECTED_STATUS:-200}"
 AUTO_DESTROY_ON_FAILURE="true"
 UPRIGHT_BOOTSTRAP_APP="true"
 UPRIGHT_APP_PATH="/home/deploy/upright"
@@ -83,6 +89,19 @@ if [[ -z "${REGISTRY_USERNAME}" || "${REGISTRY_USERNAME}" == "your-github-userna
   exit 1
 fi
 IMAGE_NAME="${REGISTRY_USERNAME}/upright"
+if [[ -n "${HTTP_PROBE_URL}" ]]; then
+  if ! [[ "${HTTP_PROBE_URL}" =~ ^https?:// ]]; then
+    echo "HTTP_PROBE_URL must start with http:// or https://" >&2
+    exit 1
+  fi
+  if [[ -z "${HTTP_PROBE_NAME}" ]]; then
+    HTTP_PROBE_NAME="Main Website"
+  fi
+  if ! [[ "${HTTP_PROBE_EXPECTED_STATUS}" =~ ^[0-9]+$ ]] || [[ "${HTTP_PROBE_EXPECTED_STATUS}" -lt 100 ]] || [[ "${HTTP_PROBE_EXPECTED_STATUS}" -gt 599 ]]; then
+    echo "HTTP_PROBE_EXPECTED_STATUS must be an integer between 100 and 599" >&2
+    exit 1
+  fi
+fi
 if [[ "${DNS_MODE}" == "linode-dns" && -z "${ROOT_DOMAIN}" ]]; then
   echo "ROOT_DOMAIN is required when DNS_MODE=linode-dns" >&2
   exit 1
@@ -213,6 +232,9 @@ kamal_ssh_port: ${KAMAL_SSH_PORT}
 registry_server: "${REGISTRY_SERVER}"
 registry_username: "${REGISTRY_USERNAME}"
 image_name: "${IMAGE_NAME}"
+http_probe_name: "${HTTP_PROBE_NAME}"
+http_probe_url: "${HTTP_PROBE_URL}"
+http_probe_expected_status: ${HTTP_PROBE_EXPECTED_STATUS}
 
 dns_mode: "${DNS_MODE}"
 root_domain: "${ROOT_DOMAIN}"

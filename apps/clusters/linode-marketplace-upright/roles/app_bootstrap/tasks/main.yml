@@ -292,6 +292,15 @@
         group: "{{ deploy_user }}"
         mode: "0644"
 
+    - name: Write Upright HTTP probes config (single probe)
+      when: (http_probe_url | default('', true) | trim | length) > 0
+      ansible.builtin.template:
+        src: http_probes.yml.j2
+        dest: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/probes/http_probes.yml"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+
     - name: Write Kamal secrets template
       ansible.builtin.template:
         src: kamal-secrets.j2

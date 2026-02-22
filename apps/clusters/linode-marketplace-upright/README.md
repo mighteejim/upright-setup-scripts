@@ -29,6 +29,10 @@ Raw URL pattern for Linode StackScript:
 
 - `https://raw.githubusercontent.com/<org>/<repo>/<branch>/deployment_scripts/linode-marketplace-upright/upright-deploy.sh`
 - Set `GIT_REPO` UDF to your public repo URL that contains this cluster tree.
+- Optional single HTTP probe UDFs:
+  - `HTTP_PROBE_NAME` (default: `Main Website`)
+  - `HTTP_PROBE_URL` (blank disables custom probe rendering)
+  - `HTTP_PROBE_EXPECTED_STATUS` (default: `200`)
 
 ## Output Artifacts
 
