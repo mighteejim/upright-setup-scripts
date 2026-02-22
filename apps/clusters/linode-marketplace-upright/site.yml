@@ -24,6 +24,54 @@
   roles:
     - common
 
+- name: Prepare app-node deploy SSH key for Kamal fanout
+  hosts: app
+  gather_facts: false
+  become: true
+  vars_files:
+    - group_vars/linode/vars
+  tasks:
+    - name: Ensure app-node deploy keypair exists and print public key
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        mkdir -p "$HOME/.ssh"
+        chmod 700 "$HOME/.ssh"
+        if [[ ! -f "$HOME/.ssh/id_ed25519" ]]; then
+          ssh-keygen -t ed25519 -N "" -f "$HOME/.ssh/id_ed25519" -C "upright-kamal@$(hostname -f 2>/dev/null || hostname)" >/dev/null
+        fi
+        cat "$HOME/.ssh/id_ed25519.pub"
+      args:
+        executable: /bin/bash
+      register: app_node_deploy_keypair
+      changed_when: false
+
+    - name: Validate app-node deploy public key
+      ansible.builtin.assert:
+        that:
+          - app_node_deploy_keypair.stdout | trim | length > 0
+        fail_msg: Failed to resolve app-node deploy SSH public key
+
+    - name: Persist app-node deploy public key fact
+      ansible.builtin.set_fact:
+        app_node_deploy_pubkey: "{{ app_node_deploy_keypair.stdout | trim }}"
+
+- name: Authorize app-node deploy SSH key across cluster
+  hosts: all_upright
+  gather_facts: false
+  become: true
+  vars_files:
+    - group_vars/linode/vars
+  tasks:
+    - name: Ensure deploy authorized_keys contains app-node key for Kamal
+      ansible.builtin.lineinfile:
+        path: "/home/{{ deploy_user }}/.ssh/authorized_keys"
+        line: "{{ hostvars[(groups['app'] | first)].app_node_deploy_pubkey }}"
+        create: true
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0600"
+
 - name: Bootstrap Upright app on app node
   hosts: app
   gather_facts: false
