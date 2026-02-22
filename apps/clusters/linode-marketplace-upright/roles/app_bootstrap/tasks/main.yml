@@ -80,6 +80,10 @@
         set -euo pipefail
         export RBENV_ROOT="$HOME/.rbenv"
         export PATH="$RBENV_ROOT/bin:$PATH"
+        export RUBY_BUILD_CACHE_PATH="$HOME/.cache/ruby-build"
+        export MAKE_OPTS="-j$(nproc)"
+        export RUBY_CONFIGURE_OPTS="--disable-install-doc --disable-yjit"
+        mkdir -p "$RUBY_BUILD_CACHE_PATH"
         eval "$(rbenv init - bash)"
         rbenv install -s "{{ upright_ruby_version | default('3.4.2', true) }}"
         rbenv global "{{ upright_ruby_version | default('3.4.2', true) }}"
@@ -128,6 +132,8 @@
         eval "$(rbenv init - bash)"
         rbenv shell "{{ upright_ruby_version | default('3.4.2', true) }}"
         cd "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}"
+        bundle config set --local jobs "$(nproc)"
+        bundle config set --local retry 3
         if ! grep -Eq '^[[:space:]]*gem[[:space:]]+["'"'"']upright["'"'"']' Gemfile; then
           bundle add upright
         fi
