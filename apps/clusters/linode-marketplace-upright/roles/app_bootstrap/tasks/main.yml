@@ -71,7 +71,20 @@
         marker: "# {mark} UPRIGHT_RBENV"
         block: |
           export RBENV_ROOT="$HOME/.rbenv"
-          export PATH="$RBENV_ROOT/bin:$PATH"
+          export PATH="$RBENV_ROOT/bin:$RBENV_ROOT/shims:$PATH"
+          eval "$(rbenv init - bash)"
+
+    - name: Ensure rbenv env setup in deploy bashrc
+      ansible.builtin.blockinfile:
+        path: "/home/{{ deploy_user }}/.bashrc"
+        create: true
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+        marker: "# {mark} UPRIGHT_RBENV"
+        block: |
+          export RBENV_ROOT="$HOME/.rbenv"
+          export PATH="$RBENV_ROOT/bin:$RBENV_ROOT/shims:$PATH"
           eval "$(rbenv init - bash)"
 
     - name: Install and activate Ruby via rbenv
