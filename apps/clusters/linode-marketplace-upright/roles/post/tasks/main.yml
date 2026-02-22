@@ -11,8 +11,8 @@
       Deploy user: {{ deploy_user }}
       Upright app path: {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}
       App bootstrap: {{ (upright_bootstrap_app | default(true) | bool) | ternary('enabled', 'disabled') }}
-      Image: {{ image_name | default('ghcr.io/your-github-username/upright', true) }}
-      Registry: {{ registry_server | default('ghcr.io', true) }} ({{ registry_username | default('your-github-username', true) }})
+      Image: {{ image_name | default('(not set)', true) }}
+      Registry: {{ registry_server | default('ghcr.io', true) }} ({{ registry_username | default('(not set)', true) }})
       Root domain: {{ root_domain }}
       Suffix label: {{ upright_suffix_label }}
 

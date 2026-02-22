@@ -20,6 +20,7 @@ set -euo pipefail
 # <UDF name="CLUSTER_NAME" label="Cluster name prefix" default="upright" />
 # <UDF name="TIMEZONE" label="Timezone" default="UTC" />
 # <UDF name="KAMAL_SSH_PORT" label="Kamal SSH port" default="22" />
+# <UDF name="GITHUB_USERNAME" label="GitHub username for GHCR image" default="" />
 # <UDF name="REGISTRY_SERVER" label="Container registry server" default="ghcr.io" />
 # <UDF name="REGISTRY_USERNAME" label="Container registry username" default="your-github-username" />
 # <UDF name="IMAGE_NAME" label="Container image name" default="ghcr.io/your-github-username/upright" />
@@ -47,6 +48,7 @@ SEA_REGION="${SEA_REGION:-us-sea}"
 CLUSTER_NAME="${CLUSTER_NAME:-upright}"
 TIMEZONE="${TIMEZONE:-UTC}"
 KAMAL_SSH_PORT="${KAMAL_SSH_PORT:-22}"
+GITHUB_USERNAME="${GITHUB_USERNAME:-}"
 REGISTRY_SERVER="${REGISTRY_SERVER:-ghcr.io}"
 REGISTRY_USERNAME="${REGISTRY_USERNAME:-your-github-username}"
 IMAGE_NAME="${IMAGE_NAME:-ghcr.io/your-github-username/upright}"
@@ -74,6 +76,25 @@ if [[ -z "${GIT_REPO}" ]]; then
 fi
 if [[ -z "${DEPLOY_SSH_PUBKEY}" ]]; then
   echo "DEPLOY_SSH_PUBKEY is required" >&2
+  exit 1
+fi
+if [[ -n "${GITHUB_USERNAME}" ]]; then
+  if [[ -z "${REGISTRY_USERNAME}" || "${REGISTRY_USERNAME}" == "your-github-username" ]]; then
+    REGISTRY_USERNAME="${GITHUB_USERNAME}"
+  fi
+  if [[ -z "${IMAGE_NAME}" || "${IMAGE_NAME}" == "ghcr.io/your-github-username/upright" ]]; then
+    IMAGE_NAME="ghcr.io/${REGISTRY_USERNAME}/upright"
+  fi
+fi
+if [[ "${IMAGE_NAME}" == "ghcr.io/your-github-username/upright" && "${REGISTRY_USERNAME}" != "your-github-username" ]]; then
+  IMAGE_NAME="ghcr.io/${REGISTRY_USERNAME}/upright"
+fi
+if [[ -z "${REGISTRY_USERNAME}" || "${REGISTRY_USERNAME}" == "your-github-username" ]]; then
+  echo "REGISTRY_USERNAME is required (or set GITHUB_USERNAME)" >&2
+  exit 1
+fi
+if [[ -z "${IMAGE_NAME}" || "${IMAGE_NAME}" == *"your-github-username"* ]]; then
+  echo "IMAGE_NAME is required and cannot contain placeholder 'your-github-username'" >&2
   exit 1
 fi
 if [[ "${DNS_MODE}" == "linode-dns" && -z "${ROOT_DOMAIN}" ]]; then
@@ -211,6 +232,7 @@ deploy_user: "${DEPLOY_USER}"
 deploy_ssh_pubkey: "${DEPLOY_SSH_PUBKEY}"
 timezone: "${TIMEZONE}"
 kamal_ssh_port: ${KAMAL_SSH_PORT}
+github_username: "${GITHUB_USERNAME}"
 registry_server: "${REGISTRY_SERVER}"
 registry_username: "${REGISTRY_USERNAME}"
 image_name: "${IMAGE_NAME}"

@@ -11,9 +11,11 @@
           - app_public_ipv4 | default('') | length > 0
           - monitor_nodes is defined
           - (monitor_nodes | length) >= 3
-          - (image_name | default('ghcr.io/your-github-username/upright', true)) | length > 0
+          - (image_name | default('', true)) | length > 0
           - (registry_server | default('ghcr.io', true)) | length > 0
-          - (registry_username | default('your-github-username', true)) | length > 0
+          - (registry_username | default('', true)) | length > 0
+          - (registry_username | default('', true)) != 'your-github-username'
+          - "'your-github-username' not in (image_name | default('', true))"
         fail_msg: Missing required app bootstrap variable(s)
 
     - name: Install app bootstrap packages
