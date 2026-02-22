@@ -140,6 +140,13 @@
       args:
         executable: /bin/bash
 
+    - name: Keep generated Upright host rules additive (do not overwrite)
+      ansible.builtin.replace:
+        path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/initializers/upright.rb"
+        regexp: '(config\.hosts\s*)='
+        replace: '\1+='
+      failed_when: false
+
     - name: Resolve monitor public IPv4 addresses for config templates
       ansible.builtin.set_fact:
         app_bootstrap_ord_public_ipv4: "{{ (monitor_nodes | selectattr('code', 'equalto', 'ord') | first).ipv4_public }}"
