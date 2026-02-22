@@ -2,6 +2,7 @@ infra/
 upright/
 .kamal/
 config/
+.ansible/
 bin/__pycache__/
 py/**/__pycache__/
 linode-passwords.txt

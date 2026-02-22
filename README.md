@@ -49,7 +49,6 @@ bin/kamal deploy
 
 If setup/deploy fails, start with `docs/TROUBLESHOOTING.md`.
 
-## Deployment Paths
+## Deployment Path
 
-- Marketplace-style cluster (recommended): `deployment_scripts/linode-marketplace-upright/upright-deploy.sh`
-- Legacy local wizards (maintenance only): `bin/upright-linode-setup`, `bin/upright-linode-setup.py`
+- Marketplace-style cluster: `deployment_scripts/linode-marketplace-upright/upright-deploy.sh`

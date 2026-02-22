@@ -154,6 +154,26 @@
         app_bootstrap_iad_host: "{{ ((root_domain | default('') | trim | length) > 0) | ternary('iad.' ~ upright_suffix_label ~ '.' ~ root_domain, app_bootstrap_iad_public_ipv4) }}"
         app_bootstrap_sea_host: "{{ ((root_domain | default('') | trim | length) > 0) | ternary('sea.' ~ upright_suffix_label ~ '.' ~ root_domain, app_bootstrap_sea_public_ipv4) }}"
 
+    - name: Allow Kamal health checks + deployment hosts in Rails production
+      ansible.builtin.blockinfile:
+        path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/environments/production.rb"
+        marker: "  # {mark} UPRIGHT_KAMAL_HOSTS"
+        insertbefore: '^end$'
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+        block: |
+          # Allow Kamal container-id host header health checks during rollout.
+          config.hosts << /\A[a-z0-9]{12}(?::\d+)?\z/
+          config.hosts << "{{ app_bootstrap_app_host }}"
+          config.hosts << "{{ app_bootstrap_ord_host }}"
+          config.hosts << "{{ app_bootstrap_iad_host }}"
+          config.hosts << "{{ app_bootstrap_sea_host }}"
+          config.hosts << "{{ app_public_ipv4 }}"
+          config.hosts << "{{ app_bootstrap_ord_public_ipv4 }}"
+          config.hosts << "{{ app_bootstrap_iad_public_ipv4 }}"
+          config.hosts << "{{ app_bootstrap_sea_public_ipv4 }}"
+
     - name: Ensure .kamal directory exists
       ansible.builtin.file:
         path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/.kamal"
