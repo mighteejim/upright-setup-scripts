@@ -31,7 +31,14 @@ builder:
 
 proxy:
   app_port: 3000
+{% if enable_ssl | default(false, true) | bool %}
+  ssl:
+    certificate_pem: CERTIFICATE_PEM
+    private_key_pem: PRIVATE_KEY_PEM
+  ssl_redirect: {{ (ssl_redirect | default(true, true) | bool) | ternary('true', 'false') }}
+{% else %}
   ssl: false
+{% endif %}
   forward_headers: true
   run:
     http_port: 80
@@ -45,8 +52,8 @@ proxy:
 env:
   clear:
     UPRIGHT_HOSTNAME: {{ app_bootstrap_suffix_fqdn }}
-    UPRIGHT_URL_PROTOCOL: http
-    UPRIGHT_SESSION_SECURE: "false"
+    UPRIGHT_URL_PROTOCOL: {{ (enable_ssl | default(false, true) | bool) | ternary('https', 'http') }}
+    UPRIGHT_SESSION_SECURE: {{ (enable_ssl | default(false, true) | bool) | ternary('"true"', '"false"') }}
     PLAYWRIGHT_SERVER_URL: ws://upright-playwright:53333/playwright
     PROMETHEUS_URL: http://upright-prometheus:9090
     ALERTMANAGER_URL: http://upright-alertmanager:9093

@@ -23,6 +23,8 @@ image_name: ""
 http_probe_name: "Main Website"
 http_probe_url: ""
 http_probe_expected_status: 200
+enable_ssl: false
+ssl_redirect: true
 
 dns_mode: "manual"
 root_domain: ""

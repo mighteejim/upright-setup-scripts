@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PASS_PREFIX="${PASS_PREFIX:-upright}"
+DEFAULT_CREDENTIALS_FILE="${HOME}/.credentials"
+
+need_cmd() {
+  local name="$1"
+  if command -v "${name}" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[ERROR] Missing required command: ${name}" >&2
+  exit 1
+}
+
+read_credential_field() {
+  local key="$1"
+  local value=""
+  if [[ -f "${DEFAULT_CREDENTIALS_FILE}" ]]; then
+    value="$(awk -F': ' -v k="${key}" '$1 == k {print $2; exit}' "${DEFAULT_CREDENTIALS_FILE}" 2>/dev/null || true)"
+  fi
+  printf '%s' "${value}"
+}
+
+install_certbot() {
+  if command -v certbot >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[INFO] Installing certbot"
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update -y
+    sudo apt-get install -y certbot
+    return 0
+  fi
+  if command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y certbot
+    return 0
+  fi
+  if command -v yum >/dev/null 2>&1; then
+    sudo yum install -y certbot
+    return 0
+  fi
+  if command -v pacman >/dev/null 2>&1; then
+    sudo pacman -Sy --noconfirm certbot
+    return 0
+  fi
+  echo "[ERROR] Unsupported package manager; install certbot manually." >&2
+  exit 1
+}
+
+store_pem_secret() {
+  local source_file="$1"
+  local secret_key="$2"
+  if [[ ! -r "${source_file}" ]]; then
+    echo "[ERROR] Missing PEM file: ${source_file}" >&2
+    exit 1
+  fi
+  pass insert -m -f "${PASS_PREFIX}/${secret_key}" < "${source_file}" >/dev/null
+  echo "[INFO] Saved ${PASS_PREFIX}/${secret_key}"
+}
+
+need_cmd pass
+need_cmd gpg
+install_certbot
+
+ROOT_DOMAIN="${ROOT_DOMAIN:-$(read_credential_field 'Root domain')}"
+UPRIGHT_SUFFIX_LABEL="${UPRIGHT_SUFFIX_LABEL:-$(read_credential_field 'Suffix label')}"
+if [[ -z "${UPRIGHT_SUFFIX_LABEL}" ]]; then
+  UPRIGHT_SUFFIX_LABEL="up"
+fi
+
+if [[ -z "${ROOT_DOMAIN}" ]]; then
+  read -r -p "Root domain (example.com): " ROOT_DOMAIN
+fi
+if [[ -z "${ROOT_DOMAIN}" ]]; then
+  echo "[ERROR] Root domain is required for certbot SSL setup." >&2
+  exit 1
+fi
+
+CERT_DOMAIN="${UPRIGHT_SUFFIX_LABEL}.${ROOT_DOMAIN}"
+DEFAULT_EMAIL="deploy@${CERT_DOMAIN}"
+CERTBOT_EMAIL="${CERTBOT_EMAIL:-${DEFAULT_EMAIL}}"
+read -r -p "Certbot email [${CERTBOT_EMAIL}]: " input_email
+CERTBOT_EMAIL="${input_email:-${CERTBOT_EMAIL}}"
+
+echo "[INFO] Requesting certificate for ${CERT_DOMAIN} and *.${CERT_DOMAIN} via certbot manual DNS challenge."
+echo "[INFO] Certbot will prompt for TXT records. Complete both DNS challenges before continuing."
+sudo certbot certonly \
+  --manual \
+  --preferred-challenges dns \
+  --manual-public-ip-logging-ok \
+  --agree-tos \
+  --no-eff-email \
+  --email "${CERTBOT_EMAIL}" \
+  --cert-name "${CERT_DOMAIN}" \
+  -d "${CERT_DOMAIN}" \
+  -d "*.${CERT_DOMAIN}"
+
+CERT_DIR="/etc/letsencrypt/live/${CERT_DOMAIN}"
+CERT_FILE="${CERT_DIR}/fullchain.pem"
+KEY_FILE="${CERT_DIR}/privkey.pem"
+
+if [[ ! -f "${CERT_FILE}" || ! -f "${KEY_FILE}" ]]; then
+  echo "[ERROR] Certbot completed but expected files were not found under ${CERT_DIR}" >&2
+  exit 1
+fi
+
+store_pem_secret <(sudo cat "${CERT_FILE}") "ssl/certificate_pem"
+store_pem_secret <(sudo cat "${KEY_FILE}") "ssl/private_key_pem"
+
+echo
+echo "SSL cert and key stored in pass."
+echo "Next:"
+echo "  eval \"\$(~/bin/load-secrets)\""
+echo "  cd ~/upright"
+echo "  bin/kamal setup"
+echo "  bin/kamal deploy"
+echo
+echo "Renewal note:"
+echo "  This manual DNS certbot flow is not unattended."
+echo "  Re-run ~/bin/setup-certbot-ssl before expiry to refresh cert secrets."

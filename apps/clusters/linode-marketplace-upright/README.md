@@ -33,6 +33,9 @@ Raw URL pattern for Linode StackScript:
   - `HTTP_PROBE_NAME` (default: `Main Website`)
   - `HTTP_PROBE_URL` (blank disables custom probe rendering)
   - `HTTP_PROBE_EXPECTED_STATUS` (default: `200`)
+- Optional SSL UDFs:
+  - `ENABLE_SSL` (`true|false`, default: `false`)
+  - `SSL_REDIRECT` (`true|false`, default: `true`)
 
 ## Output Artifacts
 
@@ -41,8 +44,10 @@ On app/provisioner node:
 - `/var/log/stackscript.log`
 - `/home/<deploy_user>/.credentials`
 - `/root/.upright-cluster-info`
-- `/home/<deploy_user>/bin/setup-pass-secrets`
-- `/home/<deploy_user>/bin/load-secrets`
+- `/home/<deploy_user>/bin/configure-secrets`
+- `/home/<deploy_user>/bin/helpers/setup-pass-secrets`
+- `/home/<deploy_user>/bin/helpers/setup-certbot-ssl`
+- `/home/<deploy_user>/bin/helpers/load-secrets`
 - `/home/<deploy_user>/upright/config/deploy.yml`
 - `/home/<deploy_user>/upright/config/sites.yml`
 - `/home/<deploy_user>/upright/.kamal/secrets`
@@ -51,6 +56,14 @@ On app/provisioner node:
 
 This flow handles infrastructure + baseline host configuration + app scaffolding.
 Kamal deploy remains an operator step after secrets are loaded.
+
+## Certbot SSL Path
+
+When `ENABLE_SSL=true`:
+
+1. Run `eval "$(~/bin/configure-secrets)"`
+   - This runs: `setup-pass-secrets` -> `setup-certbot-ssl` -> `load-secrets`
+2. Run `cd ~/upright && bin/kamal setup && bin/kamal deploy`
 
 ## Linode Interfaces Note
 

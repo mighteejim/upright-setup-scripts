@@ -24,6 +24,8 @@ set -euo pipefail
 # <UDF name="HTTP_PROBE_NAME" label="HTTP probe name" default="Main Website" />
 # <UDF name="HTTP_PROBE_URL" label="HTTP probe URL (optional)" default="" />
 # <UDF name="HTTP_PROBE_EXPECTED_STATUS" label="HTTP probe expected status" default="200" />
+# <UDF name="ENABLE_SSL" label="Enable HTTPS with custom certbot certificate" oneOf="true,false" default="false" />
+# <UDF name="SSL_REDIRECT" label="Redirect HTTP to HTTPS when SSL enabled" oneOf="true,false" default="true" />
 # <UDF name="GIT_REPO" label="Git repo URL" default="" />
 # <UDF name="GIT_BRANCH" label="Git branch" default="main" />
 
@@ -47,6 +49,8 @@ REGISTRY_USERNAME="${REGISTRY_USERNAME:-your-github-username}"
 HTTP_PROBE_NAME="${HTTP_PROBE_NAME:-Main Website}"
 HTTP_PROBE_URL="${HTTP_PROBE_URL:-}"
 HTTP_PROBE_EXPECTED_STATUS="${HTTP_PROBE_EXPECTED_STATUS:-200}"
+ENABLE_SSL="${ENABLE_SSL:-false}"
+SSL_REDIRECT="${SSL_REDIRECT:-true}"
 AUTO_DESTROY_ON_FAILURE="true"
 UPRIGHT_BOOTSTRAP_APP="true"
 UPRIGHT_APP_PATH="/home/deploy/upright"
@@ -101,6 +105,14 @@ if [[ -n "${HTTP_PROBE_URL}" ]]; then
     echo "HTTP_PROBE_EXPECTED_STATUS must be an integer between 100 and 599" >&2
     exit 1
   fi
+fi
+if [[ "${ENABLE_SSL}" != "true" && "${ENABLE_SSL}" != "false" ]]; then
+  echo "ENABLE_SSL must be true or false" >&2
+  exit 1
+fi
+if [[ "${SSL_REDIRECT}" != "true" && "${SSL_REDIRECT}" != "false" ]]; then
+  echo "SSL_REDIRECT must be true or false" >&2
+  exit 1
 fi
 if [[ "${DNS_MODE}" == "linode-dns" && -z "${ROOT_DOMAIN}" ]]; then
   echo "ROOT_DOMAIN is required when DNS_MODE=linode-dns" >&2
@@ -235,6 +247,8 @@ image_name: "${IMAGE_NAME}"
 http_probe_name: "${HTTP_PROBE_NAME}"
 http_probe_url: "${HTTP_PROBE_URL}"
 http_probe_expected_status: ${HTTP_PROBE_EXPECTED_STATUS}
+enable_ssl: ${ENABLE_SSL}
+ssl_redirect: ${SSL_REDIRECT}
 
 dns_mode: "${DNS_MODE}"
 root_domain: "${ROOT_DOMAIN}"

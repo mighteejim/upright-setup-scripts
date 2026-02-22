@@ -36,21 +36,14 @@
 
       Next steps (run from your workstation):
       1) SSH to app node as {{ deploy_user }}
-      {% if upright_bootstrap_app | default(true) | bool %}
       2) Verify app scaffold at {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}
       3) Verify generated config files:
          - {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/deploy.yml
          - {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/sites.yml
          - {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/.kamal/secrets
-      4) Run ~/bin/setup-pass-secrets on app node
-      5) Add/load deploy secrets via ~/bin/load-secrets
-      6) Run cd {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }} && bin/kamal setup && bin/kamal deploy
-      {% else %}
-      2) Clone/create your Upright Rails app repo at {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}
-      3) Run ~/bin/setup-pass-secrets on app node
-      4) Add/load deploy secrets via ~/bin/load-secrets
+      4) Run eval "$(~/bin/configure-secrets)" on app node
       5) Run cd {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }} && bin/kamal setup && bin/kamal deploy
-      {% endif %}
+      6) Optional individual helpers live under ~/bin/helpers
 
 - name: Ensure deploy user bin directory
   ansible.builtin.file:
@@ -60,21 +53,47 @@
     mode: "0755"
     state: directory
 
-- name: Install setup-pass-secrets helper
+- name: Ensure deploy user helpers directory
+  ansible.builtin.file:
+    path: "/home/{{ deploy_user }}/bin/helpers"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+    state: directory
+
+- name: Install helper scripts under ~/bin/helpers
   ansible.builtin.copy:
-    src: setup-pass-secrets
-    dest: "/home/{{ deploy_user }}/bin/setup-pass-secrets"
+    src: "{{ item }}"
+    dest: "/home/{{ deploy_user }}/bin/helpers/{{ item }}"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+  loop:
+    - setup-pass-secrets
+    - setup-certbot-ssl
+    - load-secrets
+
+- name: Install configure-secrets wrapper
+  ansible.builtin.copy:
+    src: configure-secrets
+    dest: "/home/{{ deploy_user }}/bin/configure-secrets"
     owner: "{{ deploy_user }}"
     group: "{{ deploy_user }}"
     mode: "0755"
 
-- name: Install load-secrets helper
+- name: Install compatibility shims in ~/bin
   ansible.builtin.copy:
-    src: load-secrets
-    dest: "/home/{{ deploy_user }}/bin/load-secrets"
+    dest: "/home/{{ deploy_user }}/bin/{{ item }}"
     owner: "{{ deploy_user }}"
     group: "{{ deploy_user }}"
     mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      exec "$HOME/bin/helpers/{{ item }}" "$@"
+  loop:
+    - setup-pass-secrets
+    - setup-certbot-ssl
+    - load-secrets
 
 - name: Ensure helper scripts are in deploy user PATH
   ansible.builtin.lineinfile:
