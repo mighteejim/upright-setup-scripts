@@ -168,7 +168,9 @@
         insertafter: '^\s*config\.hostname\s*=.*$'
         block: |
           # Ensure subdomain parsing works for nested hostnames (e.g. app.up.example.com).
-          Rails.application.config.action_dispatch.tld_length = [ENV.fetch("UPRIGHT_HOSTNAME", "upright.com").split(".").length - 1, 1].max
+          tld_length = [ENV.fetch("UPRIGHT_HOSTNAME", "upright.com").split(".").length - 1, 1].max
+          Rails.application.config.action_dispatch.tld_length = tld_length
+          ActionDispatch::Http::URL.tld_length = tld_length if defined?(ActionDispatch::Http::URL)
       failed_when: false
 
     - name: Resolve monitor public IPv4 addresses for config templates
