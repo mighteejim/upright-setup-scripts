@@ -322,6 +322,24 @@
         group: "{{ deploy_user }}"
         mode: "0644"
 
+    - name: Validate required Kamal build files exist
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}"
+        missing=0
+        for file in Dockerfile .dockerignore Gemfile config/deploy.yml .kamal/secrets; do
+          if [[ ! -f "${file}" ]]; then
+            echo "[ERROR] Missing required file: ${file}" >&2
+            missing=1
+          fi
+        done
+        if [[ "${missing}" -ne 0 ]]; then
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+
     - name: Ensure generated deploy config is committed for Kamal
       become_user: "{{ deploy_user }}"
       ansible.builtin.shell: |
@@ -333,31 +351,36 @@
         fi
         git config user.name >/dev/null 2>&1 || git config user.name "Upright Bootstrap"
         git config user.email >/dev/null 2>&1 || git config user.email "deploy@$(hostname -f 2>/dev/null || hostname)"
-        generated_files=(
-          config/deploy.yml
-          config/sites.yml
-          config/recurring.yml
-          probes/http_probes.yml
-          config/environments/production.rb
-          config/initializers/upright.rb
-          config/initializers/session_store.rb
-          config/initializers/zzzz_kamal_host_authorization.rb
-          .kamal/secrets
-        )
-        add_files=()
-        for file in "${generated_files[@]}"; do
-          [[ -e "${file}" ]] && add_files+=("${file}")
-        done
-        if [[ -n "${add_files[*]-}" ]]; then
-          git add -- "${add_files[@]}"
-        fi
-        if ! git diff --cached --quiet --ignore-submodules --; then
-          if git rev-parse --verify HEAD >/dev/null 2>&1; then
-            git commit -m "chore: sync generated upright deployment config" >/dev/null
-          else
+        if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+          # Fresh scaffold: capture full app state so Kamal build context includes Dockerfile.
+          git add -A
+          if ! git diff --cached --quiet --ignore-submodules --; then
             git commit -m "chore: bootstrap upright app" >/dev/null
+            changed=1
           fi
-          changed=1
+        else
+          generated_files=(
+            config/deploy.yml
+            config/sites.yml
+            config/recurring.yml
+            probes/http_probes.yml
+            config/environments/production.rb
+            config/initializers/upright.rb
+            config/initializers/session_store.rb
+            config/initializers/zzzz_kamal_host_authorization.rb
+            .kamal/secrets
+          )
+          add_files=()
+          for file in "${generated_files[@]}"; do
+            [[ -e "${file}" ]] && add_files+=("${file}")
+          done
+          if [[ -n "${add_files[*]-}" ]]; then
+            git add -- "${add_files[@]}"
+          fi
+          if ! git diff --cached --quiet --ignore-submodules --; then
+            git commit -m "chore: sync generated upright deployment config" >/dev/null
+            changed=1
+          fi
         fi
         echo "changed=${changed}"
       args:
