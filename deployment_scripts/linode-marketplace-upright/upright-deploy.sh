@@ -18,8 +18,6 @@ set -euo pipefail
 # <UDF name="IAD_REGION" label="IAD region" default="us-iad" />
 # <UDF name="SEA_REGION" label="SEA region" default="us-sea" />
 # <UDF name="CLUSTER_NAME" label="Cluster name prefix" default="upright" />
-# <UDF name="TIMEZONE" label="Timezone" default="UTC" />
-# <UDF name="KAMAL_SSH_PORT" label="Kamal SSH port" default="22" />
 # <UDF name="REGISTRY_USERNAME" label="Container registry username (GitHub username)" default="your-github-username" />
 # <UDF name="HTTP_PROBE_NAME" label="HTTP probe name" default="Main Website" />
 # <UDF name="HTTP_PROBE_URL" label="HTTP probe URL (optional)" default="" />
@@ -42,8 +40,8 @@ ORD_REGION="${ORD_REGION:-us-ord}"
 IAD_REGION="${IAD_REGION:-us-iad}"
 SEA_REGION="${SEA_REGION:-us-sea}"
 CLUSTER_NAME="${CLUSTER_NAME:-upright}"
-TIMEZONE="${TIMEZONE:-UTC}"
-KAMAL_SSH_PORT="${KAMAL_SSH_PORT:-22}"
+TIMEZONE="UTC"
+KAMAL_SSH_PORT="22"
 REGISTRY_SERVER="ghcr.io"
 REGISTRY_USERNAME="${REGISTRY_USERNAME:-your-github-username}"
 HTTP_PROBE_NAME="${HTTP_PROBE_NAME:-Main Website}"
@@ -120,10 +118,6 @@ if [[ "${DNS_MODE}" == "linode-dns" && -z "${ROOT_DOMAIN}" ]]; then
 fi
 if [[ "${DNS_MODE}" != "linode-dns" && "${DNS_MODE}" != "manual" ]]; then
   echo "DNS_MODE must be one of: linode-dns, manual" >&2
-  exit 1
-fi
-if ! [[ "${KAMAL_SSH_PORT}" =~ ^[0-9]+$ ]]; then
-  echo "KAMAL_SSH_PORT must be numeric" >&2
   exit 1
 fi
 if ! [[ "${DNS_TTL_SEC}" =~ ^[0-9]+$ ]]; then
