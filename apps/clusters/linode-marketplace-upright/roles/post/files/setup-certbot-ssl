@@ -51,10 +51,8 @@ install_certbot() {
 store_pem_secret() {
   local source_file="$1"
   local secret_key="$2"
-  if [[ ! -r "${source_file}" ]]; then
-    echo "[ERROR] Missing PEM file: ${source_file}" >&2
-    exit 1
-  fi
+  # source_file may be a process-substitution fd path (/dev/fd/*), so avoid
+  # readability checks that can fail despite valid stream input.
   pass insert -m -f "${PASS_PREFIX}/${secret_key}" < "${source_file}" >/dev/null
   echo "[INFO] Saved ${PASS_PREFIX}/${secret_key}"
 }

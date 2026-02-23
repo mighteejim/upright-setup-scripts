@@ -187,7 +187,8 @@ export APT_LISTCHANGES_FRONTEND=none
 touch "${ANSIBLE_LOG_PATH}" && chmod 0644 "${ANSIBLE_LOG_PATH}"
 export ANSIBLE_LOG_PATH
 echo "[stage] install bootstrap dependencies"
-run_retry 10 8 apt-get update && apt-get upgrade -y
+run_retry 10 8 apt-get update
+run_retry 10 8 apt-get upgrade -y
 run_retry 10 8 apt-get install -y git jq curl python3 python3-venv python3-pip ca-certificates
 
 rm -rf "${WORK_DIR}"
