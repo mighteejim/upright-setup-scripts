@@ -1,0 +1,10 @@
+# Python / Ansible local artifacts
+env/
+.cache/
+*.retry
+*.log
+*.pyc
+__pycache__/
+
+# Editor and OS files
+.DS_Store

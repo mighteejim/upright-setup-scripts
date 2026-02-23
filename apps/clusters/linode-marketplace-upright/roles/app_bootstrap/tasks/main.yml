@@ -204,12 +204,18 @@
         group: "{{ deploy_user }}"
         mode: "0644"
         content: |
-          Rails.application.config.session_store :cookie_store,
+          secure_cookie = ENV.fetch("UPRIGHT_SESSION_SECURE", Rails.env.production? ? "true" : "false") == "true"
+          session_domain = ENV.fetch("UPRIGHT_SESSION_DOMAIN", "").to_s.strip
+
+          options = {
             key: "_upright_session",
-            domain: :all,
             same_site: :lax,
-            secure: ENV.fetch("UPRIGHT_SESSION_SECURE", Rails.env.production? ? "true" : "false") == "true",
+            secure: secure_cookie,
             expire_after: 24.hours
+          }
+          options[:domain] = session_domain unless session_domain.empty?
+
+          Rails.application.config.session_store :cookie_store, **options
 
     - name: Configure Upright tld_length from hostname depth
       ansible.builtin.blockinfile:

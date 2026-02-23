@@ -123,3 +123,11 @@
       {{ node.code }}={{ node.ipv4_public }}
       {% endfor %}
       {% endif %}
+
+- name: Install MOTD with post-deploy guidance
+  ansible.builtin.template:
+    src: MOTD.j2
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: "0644"

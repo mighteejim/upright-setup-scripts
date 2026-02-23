@@ -12,12 +12,16 @@ This directory implements a Linode Marketplace-style cluster flow for Upright:
 
 - `provision.yml`: create monitor Linodes, wait for SSH, write inventory, optional Linode DNS.
 - `site.yml`: configure app + monitor nodes.
+- `.ansible-lint`, `.yamllint`: lint configuration for marketplace CI checks.
+- `.gitignore`: local Ansible/Python artifact ignores.
 - `roles/app_bootstrap`: installs rbenv + Ruby, scaffolds Rails app, installs Upright gem, runs DB setup.
 - `roles/app_bootstrap/templates`: renders `config/deploy.yml`, `config/sites.yml`, `.kamal/secrets` using live cluster IP/domain metadata.
 - `destroy.yml`: teardown of provisioned monitor resources.
 - `group_vars/linode/vars`: runtime variables populated by StackScript.
 - `roles/common`: baseline host setup.
-- `roles/post`: writes credentials/summary files on app node.
+- `roles/post`: writes credentials/summary files on app node and installs MOTD guidance.
+- `DOCUMENTATION.md`: deployment doc intended for Akamai Marketplace submission package.
+- `SUBMISSION_INFO.md`: draft listing metadata (name/description/version/support URL).
 
 ## StackScript Entry
 

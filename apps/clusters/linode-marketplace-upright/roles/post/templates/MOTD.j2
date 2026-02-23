@@ -1,0 +1,26 @@
+Upright Cluster Provisioned
+===========================
+
+Deploy user: {{ deploy_user }}
+App path: {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}
+
+{% if root_domain | length > 0 %}
+Dashboard: app.{{ upright_suffix_label }}.{{ root_domain }}
+Monitors:
+{% if monitor_nodes is defined %}
+{% for node in monitor_nodes %}
+- {{ node.code }}.{{ upright_suffix_label }}.{{ root_domain }} -> {{ node.ipv4_public }}
+{% endfor %}
+{% endif %}
+{% else %}
+Dashboard IP: {{ app_public_ipv4 }}
+{% endif %}
+
+Next steps:
+1) eval "$(~/bin/configure-secrets)"
+2) cd {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}
+3) bin/kamal setup && bin/kamal deploy
+4) ~/bin/verify-probe-scheduler
+
+Credentials file:
+- /home/{{ deploy_user }}/.credentials
