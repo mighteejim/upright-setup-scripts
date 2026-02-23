@@ -48,6 +48,7 @@ On app/provisioner node:
 - `/home/<deploy_user>/bin/helpers/setup-pass-secrets`
 - `/home/<deploy_user>/bin/helpers/setup-certbot-ssl`
 - `/home/<deploy_user>/bin/helpers/load-secrets`
+- `/home/<deploy_user>/bin/helpers/verify-probe-scheduler`
 - `/home/<deploy_user>/upright/config/deploy.yml`
 - `/home/<deploy_user>/upright/config/sites.yml`
 - `/home/<deploy_user>/upright/.kamal/secrets`
@@ -64,6 +65,7 @@ When `ENABLE_SSL=true`:
 1. Run `eval "$(~/bin/configure-secrets)"`
    - This runs: `setup-pass-secrets` -> `setup-certbot-ssl` -> `load-secrets`
 2. Run `cd ~/upright && bin/kamal setup && bin/kamal deploy`
+3. Run `~/bin/verify-probe-scheduler`
 
 ## Linode Interfaces Note
 

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+UPRIGHT_APP_PATH="${UPRIGHT_APP_PATH:-$HOME/upright}"
+
+if [[ ! -d "${UPRIGHT_APP_PATH}" ]]; then
+  echo "[ERROR] Upright app path not found: ${UPRIGHT_APP_PATH}" >&2
+  exit 1
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[ERROR] Missing required command: docker" >&2
+  exit 1
+fi
+
+cd "${UPRIGHT_APP_PATH}"
+
+if [[ -x "$HOME/.rbenv/bin/rbenv" ]]; then
+  export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$PATH"
+fi
+
+container_name="$(docker ps --filter 'label=service=upright' --filter 'label=role=web' --format '{{.Names}}' | head -n1)"
+if [[ -z "${container_name}" ]]; then
+  echo "[ERROR] No running upright web container found on this node." >&2
+  echo "[ERROR] Run bin/kamal deploy first, then retry." >&2
+  exit 1
+fi
+
+echo "[INFO] Checking recurring task config inside ${container_name}"
+docker exec "${container_name}" bin/rails runner '
+  keys = YAML.load_file("config/recurring.yml").fetch("production", {}).keys
+  unless keys.include?("http_probes")
+    abort("Missing recurring task: production.http_probes")
+  end
+  puts "[OK] recurring task present: production.http_probes"
+'
+
+echo "[INFO] Probe scheduler check passed"

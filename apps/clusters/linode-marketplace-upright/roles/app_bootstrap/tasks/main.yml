@@ -301,6 +301,19 @@
         group: "{{ deploy_user }}"
         mode: "0644"
 
+    - name: Ensure recurring HTTP probe scheduler task exists
+      ansible.builtin.blockinfile:
+        path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/recurring.yml"
+        marker: "  # {mark} UPRIGHT_HTTP_PROBES"
+        insertafter: '^production:\s*$'
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+        block: |
+          http_probes:
+            command: "Upright::Probes::HTTPProbe.check_and_record_all_later"
+            schedule: every 30 seconds
+
     - name: Write Kamal secrets template
       ansible.builtin.template:
         src: kamal-secrets.j2
@@ -309,7 +322,7 @@
         group: "{{ deploy_user }}"
         mode: "0644"
 
-    - name: Ensure app repo has initial git commit for Kamal
+    - name: Ensure generated deploy config is committed for Kamal
       become_user: "{{ deploy_user }}"
       ansible.builtin.shell: |
         set -euo pipefail
@@ -318,14 +331,33 @@
         if [[ ! -d .git ]]; then
           git init >/dev/null
         fi
-        if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
-          git add -A
-          git config user.name >/dev/null 2>&1 || git config user.name "Upright Bootstrap"
-          git config user.email >/dev/null 2>&1 || git config user.email "deploy@$(hostname -f 2>/dev/null || hostname)"
-          if ! git diff --cached --quiet --ignore-submodules --; then
+        git config user.name >/dev/null 2>&1 || git config user.name "Upright Bootstrap"
+        git config user.email >/dev/null 2>&1 || git config user.email "deploy@$(hostname -f 2>/dev/null || hostname)"
+        generated_files=(
+          config/deploy.yml
+          config/sites.yml
+          config/recurring.yml
+          probes/http_probes.yml
+          config/environments/production.rb
+          config/initializers/upright.rb
+          config/initializers/session_store.rb
+          config/initializers/zzzz_kamal_host_authorization.rb
+          .kamal/secrets
+        )
+        add_files=()
+        for file in "${generated_files[@]}"; do
+          [[ -e "${file}" ]] && add_files+=("${file}")
+        done
+        if [[ -n "${add_files[*]-}" ]]; then
+          git add -- "${add_files[@]}"
+        fi
+        if ! git diff --cached --quiet --ignore-submodules --; then
+          if git rev-parse --verify HEAD >/dev/null 2>&1; then
+            git commit -m "chore: sync generated upright deployment config" >/dev/null
+          else
             git commit -m "chore: bootstrap upright app" >/dev/null
-            changed=1
           fi
+          changed=1
         fi
         echo "changed=${changed}"
       args:

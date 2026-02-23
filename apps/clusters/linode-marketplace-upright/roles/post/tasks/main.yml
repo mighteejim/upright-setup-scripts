@@ -43,7 +43,8 @@
          - {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/.kamal/secrets
       4) Run eval "$(~/bin/configure-secrets)" on app node
       5) Run cd {{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }} && bin/kamal setup && bin/kamal deploy
-      6) Optional individual helpers live under ~/bin/helpers
+      6) Run ~/bin/verify-probe-scheduler (fails if recurring HTTP probes missing at runtime)
+      7) Optional individual helpers live under ~/bin/helpers
 
 - name: Ensure deploy user bin directory
   ansible.builtin.file:
@@ -72,6 +73,7 @@
     - setup-pass-secrets
     - setup-certbot-ssl
     - load-secrets
+    - verify-probe-scheduler
 
 - name: Install configure-secrets wrapper
   ansible.builtin.copy:
@@ -94,6 +96,7 @@
     - setup-pass-secrets
     - setup-certbot-ssl
     - load-secrets
+    - verify-probe-scheduler
 
 - name: Ensure helper scripts are in deploy user PATH
   ansible.builtin.lineinfile:
