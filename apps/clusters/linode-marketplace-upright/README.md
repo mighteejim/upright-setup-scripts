@@ -8,6 +8,10 @@ This directory implements a Linode Marketplace-style cluster flow for Upright:
 4. `site.yml` bootstraps the Upright Rails app on app node by default (`/home/deploy/upright`).
 5. `destroy.yml` removes monitor nodes and DNS records created by the playbook.
 
+## Fast Start
+
+See `/Users/jackley/Developer/oss/upright-setup-scripts/apps/clusters/linode-marketplace-upright/QUICKSTART.md` for the short deploy guide with UDF field examples (including GitHub PAT guidance for GHCR).
+
 ## Files
 
 - `provision.yml`: create monitor Linodes, wait for SSH, write inventory, optional Linode DNS.

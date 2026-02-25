@@ -180,21 +180,11 @@
         replace: '  config.hostname     = Rails.env.local? ? "upright.localhost" : ENV.fetch("UPRIGHT_HOSTNAME", "upright.com")'
       failed_when: false
 
-    - name: Configure Upright URL options protocol from env
+    - name: Remove custom Upright URL options override (preserve request host routing)
       ansible.builtin.blockinfile:
         path: "{{ upright_app_path | default('/home/' ~ deploy_user ~ '/upright', true) }}/config/initializers/upright.rb"
         marker: "  # {mark} UPRIGHT_URL_OPTIONS"
-        insertafter: '^\s*config\.hostname\s*=.*$'
-        block: |
-          # Keep redirect URL protocol aligned with deployment mode.
-          config.singleton_class.class_eval do
-            define_method(:default_url_options) do
-              protocol = ENV.fetch("UPRIGHT_URL_PROTOCOL", Rails.env.production? ? "https" : "http")
-              options = { protocol: protocol, host: "#{global_subdomain}.#{hostname}", domain: hostname }
-              options[:port] = ENV.fetch("PORT", 3000).to_i unless Rails.env.production?
-              options
-            end
-          end
+        state: absent
       failed_when: false
 
     - name: Configure session cookie security from env
@@ -206,9 +196,11 @@
         content: |
           secure_cookie = ENV.fetch("UPRIGHT_SESSION_SECURE", Rails.env.production? ? "true" : "false") == "true"
           session_domain = ENV.fetch("UPRIGHT_SESSION_DOMAIN", "").to_s.strip
+          session_key = ENV.fetch("UPRIGHT_SESSION_KEY", "_upright_session").to_s.strip
+          session_key = "_upright_session" if session_key.empty?
 
           options = {
-            key: "_upright_session",
+            key: session_key,
             same_site: :lax,
             secure: secure_cookie,
             expire_after: 24.hours

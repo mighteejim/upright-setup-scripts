@@ -54,6 +54,8 @@ env:
     UPRIGHT_HOSTNAME: {{ app_bootstrap_suffix_fqdn }}
     UPRIGHT_URL_PROTOCOL: {{ (enable_ssl | default(false, true) | bool) | ternary('https', 'http') }}
     UPRIGHT_SESSION_SECURE: {{ (enable_ssl | default(false, true) | bool) | ternary('"true"', '"false"') }}
+    UPRIGHT_SESSION_DOMAIN: {{ app_bootstrap_suffix_fqdn }}
+    UPRIGHT_SESSION_KEY: _upright_session_{{ cluster_uuid | default('default', true) | regex_replace('[^A-Za-z0-9_]', '_') }}
     PLAYWRIGHT_SERVER_URL: ws://upright-playwright:53333/playwright
     PROMETHEUS_URL: http://upright-prometheus:9090
     ALERTMANAGER_URL: http://upright-alertmanager:9093
